@@ -1,0 +1,53 @@
+<resources>
+    <string name="app_name">主页计划</string>
+    <string name="title_home">主页</string>
+    <string name="title_dashboard">计划</string>
+    <string name="title_stats">统计</string>
+    <string name="title_profile">我的</string>
+    <string name="home_today">3月23日 星期一</string>
+    <string name="home_greeting">你好，LittleWatter</string>
+    <string name="home_hint">搜索任务、笔记或标签</string>
+    <string name="home_focus_title">学习计划</string>
+    <string name="home_focus_value">3 项</string>
+    <string name="home_focus_desc">今日待完成学习任务</string>
+    <string name="home_done_title">打卡提醒</string>
+    <string name="home_done_value">2 条</string>
+    <string name="home_done_desc">今日待打卡提醒</string>
+    <string name="home_quick_actions">快捷入口</string>
+    <string name="home_study_plan">学习计划</string>
+    <string name="home_action_new_task">新建任务</string>
+    <string name="home_action_meeting">会议安排</string>
+    <string name="home_action_note">快速笔记</string>
+    <string name="home_action_reminder">添加提醒</string>
+    <string name="home_recent">打卡提醒</string>
+    <string name="home_recent_more">查看全部</string>
+    <string name="home_section_summary">今天继续保持节奏</string>
+    <string name="home_category_work">工作</string>
+    <string name="home_category_personal">生活</string>
+    <string name="home_category_study">学习</string>
+    <string name="home_study_plan_placeholder">学习计划内容区域（预留）</string>
+    <string name="home_background_slogan">学习从此开始......</string>
+
+    <string name="plan_title">计划看板</string>
+    <string name="plan_subtitle">管理你的本周重点任务</string>
+    <string name="plan_card_title">本周进度</string>
+    <string name="plan_card_value">68%%</string>
+    <string name="plan_card_desc">21 项任务已完成 14 项</string>
+    <string name="plan_section">待办事项</string>
+    <string name="plan_status_done">已完成</string>
+    <string name="plan_status_todo">待办</string>
+    <string name="plan_status_pending">进行中</string>
+    <string name="plan_task_1_title">完成界面打磨</string>
+    <string name="plan_task_1_meta">今天 10:00 - 产品</string>
+    <string name="plan_task_2_title">提交周报</string>
+    <string name="plan_task_2_meta">今天 14:00 - 团队</string>
+    <string name="plan_task_3_title">准备迭代演示</string>
+    <string name="plan_task_3_meta">明天 09:00 - 开发</string>
+    <string name="plan_task_4_title">处理代码评审积压</string>
+    <string name="plan_task_4_meta">明天 16:00 - 测试</string>
+
+    <string name="content_desc_search">搜索</string>
+    <string name="content_desc_avatar">头像</string>
+    <string name="stats_placeholder">统计页面占位</string>
+    <string name="profile_placeholder">我的页面占位</string>
+</resources>
