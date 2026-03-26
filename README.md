@@ -1,4 +1,4 @@
-# helloworld
+# 主页计划 (helloworld)
 
 一个基于 **Android 原生 (Kotlin + Jetpack)** 的学习管理示例应用。
 

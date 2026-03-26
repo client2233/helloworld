@@ -13,7 +13,7 @@
             android:layout_height="0dp"
             android:clipToPadding="false"
             android:paddingStart="@dimen/space_lg"
-            android:paddingTop="@dimen/space_lg"
+            android:paddingTop="52dp"
             android:paddingEnd="@dimen/space_lg"
             android:paddingBottom="@dimen/space_lg"
             app:layout_constraintBottom_toBottomOf="parent"
