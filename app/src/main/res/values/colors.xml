@@ -27,4 +27,5 @@
     <color name="status_done">#FF16A34A</color>
     <color name="status_todo">#FF4D7CFE</color>
     <color name="status_pending">#FFFF8B37</color>
+    <color name="auth_hint_lavender">#FFB7A8D9</color>
 </resources>

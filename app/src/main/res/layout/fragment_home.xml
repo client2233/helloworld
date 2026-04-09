@@ -109,12 +109,20 @@
             android:contentDescription="@string/content_desc_search"
             android:src="@drawable/ic_search_20" />
 
-        <TextView
-            android:layout_width="wrap_content"
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="@dimen/space_sm"
-            android:text="@string/home_hint"
-            android:textColor="@color/text_muted"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:hint="@string/home_hint"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            android:padding="0dp"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_muted"
             android:textSize="14sp" />
         </LinearLayout>
     </LinearLayout>
@@ -124,7 +132,7 @@
         android:id="@+id/bottomSheetCard"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_marginTop="148dp"
+        android:layout_marginTop="0dp"
         app:cardBackgroundColor="@color/surface_white"
         app:cardCornerRadius="28dp"
         app:cardElevation="4dp"

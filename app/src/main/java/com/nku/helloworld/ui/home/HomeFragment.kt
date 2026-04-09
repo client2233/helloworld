@@ -5,6 +5,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.MarginLayoutParams
+import androidx.core.view.doOnLayout
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
@@ -22,6 +23,8 @@ class HomeFragment : Fragment() {
     // onDestroyView.
     private val binding get() = _binding!!
     private var isScrollClamped = true
+    private var hasAppliedNonOverlapLayout = false
+    private var sheetAnchorTop = 0
 
     private fun computeMaxStatsScrollY(): Int {
         val viewportHeight = binding.homeCardScroll.height - binding.homeCardScroll.paddingBottom
@@ -52,17 +55,14 @@ class HomeFragment : Fragment() {
                 view.paddingRight,
                 view.paddingBottom
             )
+            binding.root.post {
+                // Insets changed: re-anchor the sheet to keep search bar fully unobstructed.
+                applyNonOverlapAnchors(behavior = BottomSheetBehavior.from(binding.bottomSheetCard))
+            }
             insets
         }
         ViewCompat.requestApplyInsets(binding.homeTopBar)
         binding.homeTopBar.bringToFront()
-
-        // 让背景上沿精确对齐到搜索框下沿。
-        binding.searchBar.post {
-            val lp = binding.studyPlanBackground.layoutParams as MarginLayoutParams
-            lp.topMargin = binding.searchBar.bottom
-            binding.studyPlanBackground.layoutParams = lp
-        }
 
         // 配置底部面板可拖拽行为
         val cardView = binding.bottomSheetCard
@@ -70,15 +70,25 @@ class HomeFragment : Fragment() {
         behavior.state = BottomSheetBehavior.STATE_COLLAPSED
         behavior.isDraggable = true
         behavior.isHideable = false
+        behavior.isFitToContents = true
 
         val density = requireContext().resources.displayMetrics.density
         val extraVisible = (52 * density).toInt()
+
+        binding.searchBar.doOnLayout {
+            applyNonOverlapAnchors(behavior)
+        }
         
         // 折叠到底时，完整显示“学习计划/打卡提醒”两张统计卡片。
         binding.bottomSheetCard.post {
+            applyNonOverlapAnchors(behavior)
             val scrollPadding = binding.homeCardScroll.paddingTop + binding.homeCardScroll.paddingBottom
             val cardsHeight = binding.statsCardsRow.height
-            behavior.peekHeight = cardsHeight + scrollPadding + extraVisible
+            val parentHeight = (binding.bottomSheetCard.parent as View).height
+            val maxByAnchor = (parentHeight - sheetAnchorTop).coerceAtLeast(1)
+            val maxPeekHeight = binding.bottomSheetCard.height.coerceAtLeast(1).coerceAtMost(maxByAnchor)
+            behavior.peekHeight = (cardsHeight + scrollPadding + extraVisible)
+                .coerceAtMost(maxPeekHeight)
             behavior.state = BottomSheetBehavior.STATE_COLLAPSED
             binding.homeCardScroll.scrollTo(0, computeMaxStatsScrollY())
         }
@@ -141,5 +151,31 @@ class HomeFragment : Fragment() {
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
+    }
+
+    private fun applyNonOverlapAnchors(behavior: BottomSheetBehavior<*>) {
+        val density = resources.displayMetrics.density
+        val safetyGapPx = (10f * density).toInt()
+        val anchorTop = (binding.homeTopBar.bottom + safetyGapPx).coerceAtLeast(binding.searchBar.bottom + safetyGapPx)
+        if (anchorTop <= 0) return
+        sheetAnchorTop = anchorTop
+
+        val backgroundLp = binding.studyPlanBackground.layoutParams as MarginLayoutParams
+        if (backgroundLp.topMargin != binding.searchBar.bottom) {
+            backgroundLp.topMargin = binding.searchBar.bottom
+            binding.studyPlanBackground.layoutParams = backgroundLp
+        }
+
+        val sheetLp = binding.bottomSheetCard.layoutParams as MarginLayoutParams
+        if (sheetLp.topMargin != anchorTop) {
+            sheetLp.topMargin = anchorTop
+            binding.bottomSheetCard.layoutParams = sheetLp
+        }
+
+        behavior.expandedOffset = anchorTop
+        if (!hasAppliedNonOverlapLayout) {
+            hasAppliedNonOverlapLayout = true
+            binding.bottomSheetCard.requestLayout()
+        }
     }
 }
