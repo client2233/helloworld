@@ -273,11 +273,13 @@
                     app:strokeWidth="1dp">
 
                     <TextView
+                        android:id="@+id/aiResultText"
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
                         android:gravity="center"
+                        android:padding="16dp"
                         android:text="@string/home_study_plan_placeholder"
-                        android:textColor="@color/text_muted"
+                        android:textColor="@color/text_primary"
                         android:textSize="14sp" />
                 </com.google.android.material.card.MaterialCardView>
 
