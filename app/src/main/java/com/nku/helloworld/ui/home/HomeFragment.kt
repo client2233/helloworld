@@ -13,6 +13,19 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.nku.helloworld.R
 import com.nku.helloworld.databinding.FragmentHomeBinding
 
+import android.view.inputmethod.EditorInfo
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 
 class HomeFragment : Fragment() {
@@ -145,6 +158,8 @@ class HomeFragment : Fragment() {
             binding.homeCardScroll.scrollTo(0, computeMaxStatsScrollY())
         }
 
+        setupAIApiCall()
+
         return binding.root
     }
 
@@ -176,6 +191,83 @@ class HomeFragment : Fragment() {
         if (!hasAppliedNonOverlapLayout) {
             hasAppliedNonOverlapLayout = true
             binding.bottomSheetCard.requestLayout()
+        }
+    }
+
+    private fun setupAIApiCall() {
+        // 用户可配置的 API 地址与 Token (由你自行填写！)
+        // 若留空 API_URL，则默认请求我们在本地代理启动的 mock_agent_v1 服务 (10.0.2.2:8080)
+        val API_URL = ""
+        val APP_ID_OR_TOKEN = ""
+
+        binding.searchInput.setOnEditorActionListener { v, actionId, event ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                val query = v.text.toString().trim()
+                if (query.isEmpty()) return@setOnEditorActionListener true
+                
+                binding.aiResultText.text = "正在呼叫 AI..."
+                
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(90, TimeUnit.SECONDS)
+                    .readTimeout(90, TimeUnit.SECONDS)
+                    .build()
+                
+                val jsonBody = JSONObject().apply {
+                    put("model", "Volc-DeepSeek-V3.2")
+                    put("stream", false)
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("content", query)
+                        })
+                    })
+                }
+                
+                val body = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                
+                // 这里处理你要自己请求的判定逻辑
+                val targetUrl = if (API_URL.isNotEmpty()) API_URL else "http://10.0.2.2:8080/v1/chat/completions"
+                val request = Request.Builder()
+                    .url(targetUrl)
+                    .post(body)
+                    .header("Authorization", "Bearer $APP_ID_OR_TOKEN")
+                    .build()
+                
+                client.newCall(request).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        activity?.runOnUiThread {
+                            binding.aiResultText.text = "网络请求失败: ${e.message}"
+                        }
+                    }
+
+                    override fun onResponse(call: Call, response: Response) {
+                        val responseBody = response.body?.string() ?: ""
+                        if (response.isSuccessful) {
+                            try {
+                                val jsonRes = JSONObject(responseBody)
+                                val content = jsonRes.getJSONArray("choices")
+                                    .getJSONObject(0)
+                                    .getJSONObject("message")
+                                    .getString("content")
+                                activity?.runOnUiThread {
+                                    binding.aiResultText.text = content
+                                }
+                            } catch (e: Exception) {
+                                activity?.runOnUiThread {
+                                    binding.aiResultText.text = "解析报错: ${e.message}\n响应原始数据:$responseBody"
+                                }
+                            }
+                        } else {
+                            activity?.runOnUiThread {
+                                binding.aiResultText.text = "响应失败: HTTP ${response.code}\n$responseBody"
+                            }
+                        }
+                    }
+                })
+                true
+            } else {
+                false
+            }
         }
     }
 }
