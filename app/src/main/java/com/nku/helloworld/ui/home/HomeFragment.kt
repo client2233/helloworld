@@ -4,214 +4,100 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewGroup.MarginLayoutParams
-import androidx.core.view.doOnLayout
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.nku.helloworld.R
-import com.nku.helloworld.databinding.FragmentHomeBinding
-
-import android.view.inputmethod.EditorInfo
-import okhttp3.Call
-import okhttp3.Callback
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-import com.google.android.material.bottomsheet.BottomSheetBehavior
+data class HomeRecentItem(
+    val title: String,
+    val category: String,
+    val time: String,
+    val colorRes: Int,
+)
 
 class HomeFragment : Fragment() {
-
-    private var _binding: FragmentHomeBinding? = null
-
-    // This property is only valid between onCreateView and
-    // onDestroyView.
-    private val binding get() = _binding!!
-    private var isScrollClamped = true
-    private var hasAppliedNonOverlapLayout = false
-    private var sheetAnchorTop = 0
-
-    private fun computeMaxStatsScrollY(): Int {
-        val viewportHeight = binding.homeCardScroll.height - binding.homeCardScroll.paddingBottom
-        return (binding.statsCardsRow.bottom - viewportHeight).coerceAtLeast(0)
-    }
-
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
-        _binding = FragmentHomeBinding.inflate(inflater, container, false)
+        return ComposeView(requireContext()).apply {
+            setContent {
+                HomeScreen()
+            }
+        }
+    }
+}
 
-        val items = listOf(
-            HomeRecentItem("英语单词打卡", getString(R.string.home_category_study), "07:30", R.color.status_todo),
-            HomeRecentItem("晚间复盘打卡", getString(R.string.home_category_study), "21:30", R.color.status_pending),
-            HomeRecentItem("晨读完成记录", getString(R.string.home_category_study), "06:40", R.color.status_done),
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeScreen() {
+    val items = listOf(
+        HomeRecentItem("英语单词打卡", stringResource(R.string.home_category_study), "07:30", R.color.status_todo),
+        HomeRecentItem("晚间复盘打卡", stringResource(R.string.home_category_study), "21:30", R.color.status_pending),
+        HomeRecentItem("晨读完成记录", stringResource(R.string.home_category_study), "06:40", R.color.status_done),
+    )
+
+    val scaffoldState = rememberBottomSheetScaffoldState(
+        bottomSheetState = rememberStandardBottomSheetState(
+            initialValue = SheetValue.PartiallyExpanded,
+            skipHiddenState = true
         )
-        binding.recentRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recentRecyclerView.adapter = HomeRecentAdapter(items)
+    )
 
-        val topBarBasePadding = binding.homeTopBar.paddingTop
-        ViewCompat.setOnApplyWindowInsetsListener(binding.homeTopBar) { view, insets ->
-            val statusBarTop = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-            view.setPadding(
-                view.paddingLeft,
-                topBarBasePadding + statusBarTop,
-                view.paddingRight,
-                view.paddingBottom
-            )
-            binding.root.post {
-                // Insets changed: re-anchor the sheet to keep search bar fully unobstructed.
-                applyNonOverlapAnchors(behavior = BottomSheetBehavior.from(binding.bottomSheetCard))
-            }
-            insets
-        }
-        ViewCompat.requestApplyInsets(binding.homeTopBar)
-        binding.homeTopBar.bringToFront()
+    val coroutineScope = rememberCoroutineScope()
+    var aiResultText by remember { mutableStateOf("学习计划内容区域（预留）") }
 
-        // 配置底部面板可拖拽行为
-        val cardView = binding.bottomSheetCard
-        val behavior = BottomSheetBehavior.from(cardView)
-        behavior.state = BottomSheetBehavior.STATE_COLLAPSED
-        behavior.isDraggable = true
-        behavior.isHideable = false
-        behavior.isFitToContents = true
+    fun sendAiRequest(query: String) {
+        if (query.isEmpty()) return
+        aiResultText = "正在呼叫 AI..."
+        coroutineScope.launch(Dispatchers.IO) {
+            try {
+                val API_URL = ""
+                val APP_ID_OR_TOKEN = ""
 
-        val density = requireContext().resources.displayMetrics.density
-        val extraVisible = (52 * density).toInt()
-
-        binding.searchBar.doOnLayout {
-            applyNonOverlapAnchors(behavior)
-        }
-        
-        // 折叠到底时，完整显示“学习计划/打卡提醒”两张统计卡片。
-        binding.bottomSheetCard.post {
-            applyNonOverlapAnchors(behavior)
-            val scrollPadding = binding.homeCardScroll.paddingTop + binding.homeCardScroll.paddingBottom
-            val cardsHeight = binding.statsCardsRow.height
-            val parentHeight = (binding.bottomSheetCard.parent as View).height
-            val maxByAnchor = (parentHeight - sheetAnchorTop).coerceAtLeast(1)
-            val maxPeekHeight = binding.bottomSheetCard.height.coerceAtLeast(1).coerceAtMost(maxByAnchor)
-            behavior.peekHeight = (cardsHeight + scrollPadding + extraVisible)
-                .coerceAtMost(maxPeekHeight)
-            behavior.state = BottomSheetBehavior.STATE_COLLAPSED
-            binding.homeCardScroll.scrollTo(0, computeMaxStatsScrollY())
-        }
-
-        // 仅在收起态限制内部滚动，展开后允许列表继续向下滚动。
-        binding.homeCardScroll.setOnScrollChangeListener { _, _, scrollY, _, _ ->
-            val maxScrollY = computeMaxStatsScrollY()
-            if (isScrollClamped && scrollY > maxScrollY) {
-                binding.homeCardScroll.post { binding.homeCardScroll.scrollTo(0, maxScrollY) }
-            }
-        }
-
-        // 展开时停在学习计划区域，收起到底时只露出统计卡片下沿。
-        behavior.addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
-            override fun onStateChanged(bottomSheet: View, newState: Int) {
-                when (newState) {
-                    BottomSheetBehavior.STATE_EXPANDED -> {
-                        isScrollClamped = false
-                        binding.homeCardScroll.post {
-                            binding.homeCardScroll.scrollTo(0, computeMaxStatsScrollY())
-                        }
-                    }
-
-                    BottomSheetBehavior.STATE_COLLAPSED -> {
-                        isScrollClamped = true
-                        binding.homeCardScroll.post {
-                            // 收起到底固定到统计卡片完整可见的位置。
-                            binding.homeCardScroll.scrollTo(0, computeMaxStatsScrollY())
-                        }
-                    }
-
-                    BottomSheetBehavior.STATE_DRAGGING,
-                    BottomSheetBehavior.STATE_SETTLING,
-                    BottomSheetBehavior.STATE_HALF_EXPANDED,
-                    BottomSheetBehavior.STATE_HIDDEN -> Unit
-
-                    else -> Unit
-                }
-            }
-
-            override fun onSlide(bottomSheet: View, slideOffset: Float) {
-                // 接近收起位置时保持顶部锚点，避免内部滚动残留导致卡片被挡住。
-                if (slideOffset <= 0.12f) {
-                    isScrollClamped = true
-                    binding.homeCardScroll.scrollTo(0, computeMaxStatsScrollY())
-                } else {
-                    isScrollClamped = false
-                }
-            }
-        })
-
-        // 首次进入默认收起到底部，露出背景区域。
-        binding.homeCardScroll.post {
-            binding.homeCardScroll.scrollTo(0, computeMaxStatsScrollY())
-        }
-
-        setupAIApiCall()
-
-        return binding.root
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
-
-    private fun applyNonOverlapAnchors(behavior: BottomSheetBehavior<*>) {
-        val density = resources.displayMetrics.density
-        val safetyGapPx = (10f * density).toInt()
-        val anchorTop = (binding.homeTopBar.bottom + safetyGapPx).coerceAtLeast(binding.searchBar.bottom + safetyGapPx)
-        if (anchorTop <= 0) return
-        sheetAnchorTop = anchorTop
-
-        val backgroundLp = binding.studyPlanBackground.layoutParams as MarginLayoutParams
-        if (backgroundLp.topMargin != binding.searchBar.bottom) {
-            backgroundLp.topMargin = binding.searchBar.bottom
-            binding.studyPlanBackground.layoutParams = backgroundLp
-        }
-
-        val sheetLp = binding.bottomSheetCard.layoutParams as MarginLayoutParams
-        if (sheetLp.topMargin != anchorTop) {
-            sheetLp.topMargin = anchorTop
-            binding.bottomSheetCard.layoutParams = sheetLp
-        }
-
-        behavior.expandedOffset = anchorTop
-        if (!hasAppliedNonOverlapLayout) {
-            hasAppliedNonOverlapLayout = true
-            binding.bottomSheetCard.requestLayout()
-        }
-    }
-
-    private fun setupAIApiCall() {
-        // 用户可配置的 API 地址与 Token (由你自行填写！)
-        // 若留空 API_URL，则默认请求我们在本地代理启动的 mock_agent_v1 服务 (10.0.2.2:8080)
-        val API_URL = ""
-        val APP_ID_OR_TOKEN = ""
-
-        binding.searchInput.setOnEditorActionListener { v, actionId, event ->
-            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                val query = v.text.toString().trim()
-                if (query.isEmpty()) return@setOnEditorActionListener true
-                
-                binding.aiResultText.text = "正在呼叫 AI..."
-                
                 val client = OkHttpClient.Builder()
                     .connectTimeout(90, TimeUnit.SECONDS)
                     .readTimeout(90, TimeUnit.SECONDS)
                     .build()
-                
+
                 val jsonBody = JSONObject().apply {
                     put("model", "Volc-DeepSeek-V3.2")
                     put("stream", false)
@@ -222,52 +108,299 @@ class HomeFragment : Fragment() {
                         })
                     })
                 }
-                
+
                 val body = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                
-                // 这里处理你要自己请求的判定逻辑
                 val targetUrl = if (API_URL.isNotEmpty()) API_URL else "http://10.0.2.2:8080/v1/chat/completions"
                 val request = Request.Builder()
                     .url(targetUrl)
                     .post(body)
                     .header("Authorization", "Bearer $APP_ID_OR_TOKEN")
                     .build()
-                
-                client.newCall(request).enqueue(object : Callback {
-                    override fun onFailure(call: Call, e: IOException) {
-                        activity?.runOnUiThread {
-                            binding.aiResultText.text = "网络请求失败: ${e.message}"
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                withContext(Dispatchers.Main) {
+                    if (response.isSuccessful) {
+                        try {
+                            val jsonRes = JSONObject(responseBody)
+                            aiResultText = jsonRes.getJSONArray("choices")
+                                .getJSONObject(0)
+                                .getJSONObject("message")
+                                .getString("content")
+                        } catch (e: Exception) {
+                            aiResultText = "解析报错: ${e.message}\n响应原始数据:$responseBody"
                         }
+                    } else {
+                        aiResultText = "响应失败: HTTP ${response.code}\n$responseBody"
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    aiResultText = "网络请求失败: ${e.message}"
+                }
+            }
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        HomeTopBar(onSearch = { sendAiRequest(it) })
+
+        BottomSheetScaffold(
+            modifier = Modifier.weight(1f),
+            scaffoldState = scaffoldState,
+            sheetPeekHeight = 190.dp, // 调整默认露出高度，使其只显示“学习计划”和“打卡提醒”的卡片区域
+            sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            sheetContainerColor = colorResource(R.color.surface_white),
+            sheetShadowElevation = 4.dp,
+            sheetDragHandle = {
+                // Internal drag handle
+                Box(
+                    modifier = Modifier
+                        .padding(top = 16.dp, bottom = 16.dp)
+                        .size(width = 40.dp, height = 4.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(colorResource(R.color.divider_soft))
+                )
+            },
+            sheetContent = {
+                HomeSheetContent(items, aiResultText)
+            }
+        ) { innerPadding ->
+            // Background area under the top bar
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colorResource(R.color.app_bg))
+                    .padding(innerPadding)
+            ) {
+                Text(
+                    text = stringResource(R.string.home_background_slogan),
+                    color = colorResource(R.color.text_secondary),
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 24.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun HomeTopBar(onSearch: (String) -> Unit) {
+    var query by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colorResource(id = R.color.app_bg))
+            .padding(top = 16.dp, start = 24.dp, end = 24.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.home_today),
+                    color = colorResource(R.color.text_secondary),
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = stringResource(R.string.home_greeting),
+                    color = colorResource(R.color.text_primary),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(colorResource(R.color.surface_white))
+                    .border(1.dp, colorResource(R.color.divider_soft), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "LW",
+                    color = colorResource(R.color.text_primary),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+
+        BasicTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+                .height(52.dp)
+                .clip(RoundedCornerShape(26.dp))
+                .background(Color.White)
+                .border(1.dp, colorResource(R.color.divider_soft), RoundedCornerShape(26.dp)),
+            textStyle = TextStyle(color = colorResource(R.color.text_primary), fontSize = 14.sp),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearch(query) }),
+            decorationBox = { innerTextField ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_search_20),
+                        contentDescription = stringResource(R.string.content_desc_search),
+                        modifier = Modifier.size(20.dp),
+                        tint = Color.Unspecified
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.home_hint),
+                                color = colorResource(R.color.text_muted),
+                                fontSize = 14.sp
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun HomeSheetContent(items: List<HomeRecentItem>, aiResultText: String) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .fillMaxHeight()
+            .padding(horizontal = 24.dp)
+    ) {
+        item {
+            Text(
+                text = stringResource(R.string.home_section_summary),
+                color = colorResource(R.color.text_secondary),
+                fontSize = 13.sp,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+            ) {
+                // Focus Card
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(96.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = colorResource(R.color.brand_primary_soft))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(text = stringResource(R.string.home_focus_title), color = colorResource(R.color.text_secondary), fontSize = 13.sp)
+                        Text(text = stringResource(R.string.home_focus_value), color = colorResource(R.color.brand_primary), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        Text(text = stringResource(R.string.home_focus_desc), color = colorResource(R.color.text_secondary), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Done Card
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(96.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = colorResource(R.color.brand_green_soft))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(text = stringResource(R.string.home_done_title), color = colorResource(R.color.text_secondary), fontSize = 13.sp)
+                        Text(text = stringResource(R.string.home_done_value), color = colorResource(R.color.brand_green), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        Text(text = stringResource(R.string.home_done_desc), color = colorResource(R.color.text_secondary), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+
+            // AI Preview Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 180.dp)
+                    .padding(top = 24.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = colorResource(R.color.app_bg)),
+                border = BorderStroke(1.dp, colorResource(R.color.divider_soft))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = aiResultText,
+                        color = colorResource(R.color.text_primary),
+                        fontSize = 14.sp
+                    )
+                }
+            }
+
+            Text(
+                text = stringResource(R.string.home_recent),
+                color = colorResource(R.color.text_primary),
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 32.dp, bottom = 8.dp)
+            )
+        }
+
+        items(items) { item ->
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = colorResource(R.color.surface_white)),
+                border = BorderStroke(1.dp, colorResource(R.color.divider_soft))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(colorResource(item.colorRes))
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 12.dp)
+                    ) {
+                        Text(text = item.title, color = colorResource(R.color.text_primary), fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(text = item.category, color = colorResource(R.color.text_secondary), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                     }
 
-                    override fun onResponse(call: Call, response: Response) {
-                        val responseBody = response.body?.string() ?: ""
-                        if (response.isSuccessful) {
-                            try {
-                                val jsonRes = JSONObject(responseBody)
-                                val content = jsonRes.getJSONArray("choices")
-                                    .getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content")
-                                activity?.runOnUiThread {
-                                    binding.aiResultText.text = content
-                                }
-                            } catch (e: Exception) {
-                                activity?.runOnUiThread {
-                                    binding.aiResultText.text = "解析报错: ${e.message}\n响应原始数据:$responseBody"
-                                }
-                            }
-                        } else {
-                            activity?.runOnUiThread {
-                                binding.aiResultText.text = "响应失败: HTTP ${response.code}\n$responseBody"
-                            }
-                        }
-                    }
-                })
-                true
-            } else {
-                false
+                    Text(text = item.time, color = colorResource(R.color.text_secondary), fontSize = 11.sp)
+                }
             }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(104.dp)) // paddingBottom corresponding to original scrollview
         }
     }
 }
