@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nku.helloworld.R
@@ -309,4 +310,16 @@ fun ThirdPartyLoginButton(
             textAlign = TextAlign.Center
         )
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun LoginScreenPreview() {
+    LoginScreen(
+        onLogin = { _, _ -> },
+        onToRegister = {},
+        onForgotPassword = {},
+        onPhoneLogin = {},
+        onWechatLogin = {}
+    )
 }

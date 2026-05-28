@@ -48,7 +48,12 @@
 
     <string name="content_desc_search">搜索</string>
     <string name="content_desc_avatar">头像</string>
-    <string name="stats_placeholder">统计页面占位</string>
+    <string name="stats_title">统计</string>
+    <string name="stats_current_progress">当前学习进度</string>
+    <string name="stats_badminton">打羽毛球</string>
+    <string name="stats_table_tennis">打乒乓球</string>
+    <string name="stats_total_progress">总学习进度</string>
+    <string name="stats_learning_calendar">学习日历</string>
     <string name="profile_placeholder">我的页面占位</string>
 
     <string name="auth_back">返回</string>
