@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -29,20 +30,52 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nku.helloworld.R
 
 class LoginActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            LoginScreen(
-                onLogin = { username, password ->
-                    if (username.isNotEmpty() && password.isNotEmpty()) {
-                        Toast.makeText(this, "登录成功", Toast.LENGTH_SHORT).show()
+            val authViewModel: AuthViewModel = viewModel()
+            val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
+
+            // 处理 UI 状态变化
+            LaunchedEffect(uiState) {
+                when (val state = uiState) {
+                    is AuthUiState.LoginSuccess -> {
+                        val loginData = state.loginData
+                        // 保存 token 到本地会话
+                        SessionManager.saveLogin(
+                            accessToken = loginData.access_token,
+                            nickname = "",
+                            phone = "",
+                            userId = 0
+                        )
+                        Toast.makeText(
+                            this@LoginActivity,
+                            "登录成功",
+                            Toast.LENGTH_SHORT
+                        ).show()
                         finish()
-                    } else {
-                        Toast.makeText(this, "请输入账号和密码", Toast.LENGTH_SHORT).show()
                     }
+                    is AuthUiState.Error -> {
+                        Toast.makeText(
+                            this@LoginActivity,
+                            state.message,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        authViewModel.resetState()
+                    }
+                    else -> { /* Idle / Loading 不需额外处理 */ }
+                }
+            }
+
+            LoginScreen(
+                isLoading = uiState is AuthUiState.Loading,
+                onLogin = { username, password ->
+                    authViewModel.login(username, password)
                 },
                 onToRegister = {
                     startActivity(Intent(this, RegisterActivity::class.java))
@@ -63,6 +96,7 @@ class LoginActivity : ComponentActivity() {
 
 @Composable
 fun LoginScreen(
+    isLoading: Boolean = false,
     onLogin: (String, String) -> Unit,
     onToRegister: () -> Unit,
     onForgotPassword: () -> Unit,
@@ -92,7 +126,7 @@ fun LoginScreen(
         Text(
             text = "要继续，请验证您的身份",
             fontSize = 14.sp,
-            color = Color(0xFFAAA5C0), // hint lavender
+            color = Color(0xFFAAA5C0),
             modifier = Modifier.padding(bottom = 48.dp)
         )
 
@@ -102,6 +136,7 @@ fun LoginScreen(
             onValueChange = { username = it },
             hint = "请输入您的账号",
             iconResId = R.drawable.ic_user,
+            enabled = !isLoading,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -114,6 +149,7 @@ fun LoginScreen(
             isPassword = true,
             isPasswordVisible = isPasswordVisible,
             onVisibilityChange = { isPasswordVisible = it },
+            enabled = !isLoading,
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
@@ -154,18 +190,26 @@ fun LoginScreen(
                 .clip(RoundedCornerShape(8.dp))
                 .background(
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFFFFA726), Color(0xFFD500F9)) // orange to purple
+                        colors = listOf(Color(0xFFFFA726), Color(0xFFD500F9))
                     )
                 )
-                .clickable { onLogin(username, password) },
+                .clickable(enabled = !isLoading) { onLogin(username, password) },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "登录",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 3.dp
+                )
+            } else {
+                Text(
+                    text = "登录",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         Text(
@@ -233,6 +277,7 @@ fun LoginInputField(
     isPassword: Boolean = false,
     isPasswordVisible: Boolean = false,
     onVisibilityChange: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     BasicTextField(
@@ -240,6 +285,7 @@ fun LoginInputField(
         onValueChange = onValueChange,
         textStyle = TextStyle(color = Color.Black, fontSize = 14.sp),
         visualTransformation = if (isPassword && !isPasswordVisible) PasswordVisualTransformation() else VisualTransformation.None,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)

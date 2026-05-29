@@ -25,17 +25,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.nku.helloworld.auth.LoginActivity
-import com.nku.helloworld.auth.RegisterActivity
+import com.nku.helloworld.auth.SessionManager
 import com.nku.helloworld.ui.dashboard.DashboardScreen
 import com.nku.helloworld.ui.home.HomeScreen
-import com.nku.helloworld.ui.profile.ProfileScreen
+import com.nku.helloworld.ui.profile.ProfileApp
 import com.nku.helloworld.ui.stats.StatsScreen
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 初始化会话管理器
+        SessionManager.init(this)
         setContent {
             MainApp()
         }
@@ -97,14 +98,7 @@ fun MainApp() {
                 "home" -> HomeScreen()
                 "dashboard" -> DashboardScreen()
                 "stats" -> StatsScreen()
-                "profile" -> ProfileScreen(
-                    onOpenLogin = {
-                        context.startActivity(Intent(context, LoginActivity::class.java))
-                    },
-                    onOpenRegister = {
-                        context.startActivity(Intent(context, RegisterActivity::class.java))
-                    }
-                )
+                "profile" -> ProfileApp()
             }
         }
     }

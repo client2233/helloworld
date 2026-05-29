@@ -8,7 +8,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -19,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -29,6 +27,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nku.helloworld.R
 
 class RegisterActivity : ComponentActivity() {
@@ -36,27 +36,37 @@ class RegisterActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val authViewModel: AuthViewModel = viewModel()
+            val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
+
+            // 处理 UI 状态变化
+            LaunchedEffect(uiState) {
+                when (val state = uiState) {
+                    is AuthUiState.RegisterSuccess -> {
+                        Toast.makeText(
+                            this@RegisterActivity,
+                            "注册成功，请登录",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        finish()
+                    }
+                    is AuthUiState.Error -> {
+                        Toast.makeText(
+                            this@RegisterActivity,
+                            state.message,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        authViewModel.resetState()
+                    }
+                    else -> { /* Idle / Loading */ }
+                }
+            }
+
             RegisterScreen(
+                isLoading = uiState is AuthUiState.Loading,
                 onBack = { finish() },
                 onRegister = { phone, password ->
-                    when {
-                        phone.isEmpty() -> {
-                            Toast.makeText(this, "请输入手机号", Toast.LENGTH_SHORT).show()
-                        }
-                        !phone.matches(Regex("^1\\d{10}$")) -> {
-                            Toast.makeText(this, "请输入有效的手机号（11位，以1开头）", Toast.LENGTH_SHORT).show()
-                        }
-                        password.isEmpty() -> {
-                            Toast.makeText(this, "请输入密码", Toast.LENGTH_SHORT).show()
-                        }
-                        password.length < 6 -> {
-                            Toast.makeText(this, "密码至少6位", Toast.LENGTH_SHORT).show()
-                        }
-                        else -> {
-                            Toast.makeText(this, "注册成功，请登录", Toast.LENGTH_SHORT).show()
-                            finish()
-                        }
-                    }
+                    authViewModel.register(phone, password)
                 },
                 onToLogin = { finish() }
             )
@@ -66,6 +76,7 @@ class RegisterActivity : ComponentActivity() {
 
 @Composable
 fun RegisterScreen(
+    isLoading: Boolean = false,
     onBack: () -> Unit,
     onRegister: (String, String) -> Unit,
     onToLogin: () -> Unit
@@ -111,6 +122,7 @@ fun RegisterScreen(
             onValueChange = { phone = it },
             hint = stringResource(R.string.auth_phone_hint),
             iconResId = R.drawable.ic_user,
+            enabled = !isLoading,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
@@ -123,6 +135,7 @@ fun RegisterScreen(
             isPassword = true,
             isPasswordVisible = isPasswordVisible,
             onVisibilityChange = { isPasswordVisible = it },
+            enabled = !isLoading,
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
@@ -134,18 +147,26 @@ fun RegisterScreen(
                 .clip(RoundedCornerShape(8.dp))
                 .background(
                     brush = Brush.horizontalGradient(
-                        colors = listOf(Color(0xFFFFA726), Color(0xFFD500F9)) // orange to purple
+                        colors = listOf(Color(0xFFFFA726), Color(0xFFD500F9))
                     )
                 )
-                .clickable { onRegister(phone, password) },
+                .clickable(enabled = !isLoading) { onRegister(phone, password) },
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "注册",
-                color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.size(28.dp),
+                    strokeWidth = 3.dp
+                )
+            } else {
+                Text(
+                    text = "注册",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
 
         // To Login Text
@@ -173,6 +194,7 @@ fun RegisterInputField(
     isPassword: Boolean = false,
     isPasswordVisible: Boolean = false,
     onVisibilityChange: ((Boolean) -> Unit)? = null,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     BasicTextField(
@@ -180,6 +202,7 @@ fun RegisterInputField(
         onValueChange = onValueChange,
         textStyle = TextStyle(color = Color.Black, fontSize = 14.sp),
         visualTransformation = if (isPassword && !isPasswordVisible) PasswordVisualTransformation() else VisualTransformation.None,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .height(56.dp)

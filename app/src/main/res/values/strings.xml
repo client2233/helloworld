@@ -92,4 +92,19 @@
     <string name="auth_forgot_password_title">找回密码</string>
     <string name="auth_phone_login">手机号登录</string>
     <string name="auth_phone_login_tips">手机号登录功能开发中</string>
+
+    <!-- Profile / 我的页面 -->
+    <string name="profile_title">我的</string>
+    <string name="profile_edit_nickname">编辑昵称</string>
+    <string name="profile_user_id_prefix">ID: </string>
+    <string name="profile_completed_goals">已完成 %d 个学习目标</string>
+    <string name="profile_data_title">学习数据</string>
+    <string name="profile_total_days">累计学习 %d 天</string>
+    <string name="profile_streak_days">连续 %d 天</string>
+    <string name="profile_notification_toggle">开通提醒</string>
+    <string name="profile_logout">退出登录</string>
+    <string name="profile_logout_confirm">确定退出登录？</string>
+    <string name="profile_logout_success">已退出登录</string>
+    <string name="profile_not_logged_in">登录后查看更多信息</string>
+    <string name="profile_camera">相机</string>
 </resources>

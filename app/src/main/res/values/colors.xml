@@ -28,4 +28,7 @@
     <color name="status_todo">#FF4D7CFE</color>
     <color name="status_pending">#FFFF8B37</color>
     <color name="auth_hint_lavender">#FFB7A8D9</color>
+    <color name="brand_red">#FFE53935</color>
+    <color name="brand_red_bg">#FFFFEBEE</color>
+    <color name="profile_card_bg">#FFF5F7FA</color>
 </resources>

@@ -1,5 +1,7 @@
 *.iml
 
+api.md
+
 # Gradle
 .gradle/
 **/build/
