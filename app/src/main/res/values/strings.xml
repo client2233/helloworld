@@ -107,4 +107,13 @@
     <string name="profile_logout_success">已退出登录</string>
     <string name="profile_not_logged_in">登录后查看更多信息</string>
     <string name="profile_camera">相机</string>
+
+    <!-- 学习计划页面 -->
+    <string name="plan_page_title">学习计划</string>
+    <string name="plan_back">返回</string>
+    <string name="plan_footer_hint">前往首页创建更多学习计划</string>
+    <string name="plan_card_latest">最近: %s</string>
+    <string name="plan_card_created">创建: %s</string>
+    <string name="plan_empty_hint">还没有学习计划，快去首页创建一个吧</string>
+    <string name="plan_card_none">暂无</string>
 </resources>

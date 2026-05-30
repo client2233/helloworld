@@ -26,7 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.nku.helloworld.auth.SessionManager
-import com.nku.helloworld.ui.dashboard.DashboardScreen
+import com.nku.helloworld.ui.plan.PlanScreen
 import com.nku.helloworld.ui.home.HomeScreen
 import com.nku.helloworld.ui.profile.ProfileApp
 import com.nku.helloworld.ui.stats.StatsScreen
@@ -96,7 +96,7 @@ fun MainApp() {
         Box(modifier = Modifier.padding(innerPadding)) {
             when (selectedTab) {
                 "home" -> HomeScreen()
-                "dashboard" -> DashboardScreen()
+                "dashboard" -> PlanScreen()
                 "stats" -> StatsScreen()
                 "profile" -> ProfileApp()
             }
