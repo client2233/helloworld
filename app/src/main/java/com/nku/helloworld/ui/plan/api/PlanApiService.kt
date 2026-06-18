@@ -2,6 +2,7 @@ package com.nku.helloworld.ui.plan.api
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.nku.helloworld.AppConfig
 import com.nku.helloworld.auth.model.ApiResponse
 import com.nku.helloworld.ui.plan.model.*
 import kotlinx.coroutines.Dispatchers
@@ -34,19 +35,19 @@ import java.util.concurrent.TimeUnit
  */
 object PlanApiService {
 
-    private const val BASE_URL = "http://10.0.2.2:8000" // Android 模拟器中指向宿主机 localhost
+    /** 从配置文件中读取的后端服务器基础地址 */
+    private val BASE_URL get() = AppConfig.baseUrl
 
     private val gson = Gson()
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(AppConfig.connectTimeout.toLong(), TimeUnit.SECONDS)
+            .readTimeout(AppConfig.readTimeout.toLong(), TimeUnit.SECONDS)
+            .writeTimeout(AppConfig.writeTimeout.toLong(), TimeUnit.SECONDS)
             .build()
     }
-
     /**
      * 获取会话列表（用于展示学习计划列表）
      *
@@ -87,6 +88,7 @@ object PlanApiService {
             }
         }
     }
+
 
     /**
      * 获取当前学习路径（基于会话）
@@ -362,4 +364,108 @@ object PlanApiService {
             }
         }
     }
+
+    // ============================================================
+    // 创建学习计划相关 API
+    // ============================================================
+
+    /**
+     * 提交问题（用于创建学习计划）
+     *
+     * POST /api/v1/messages/question
+     *
+     * 用户输入想学习的内容，提交为问题消息。
+     * 服务端会创建生成任务，返回 generation_task_id 供前端轮询。
+     *
+     * 参考 api.md 中的「前端提交问题样例」
+     */
+    suspend fun submitQuestion(
+        token: String,
+        request: QuestionSubmitRequest
+    ): Result<QuestionSubmitData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val jsonBody = gson.toJson(request)
+                val requestBuilder = Request.Builder()
+                    .url("$BASE_URL/api/v1/messages/question")
+                    .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
+                    .header("Authorization", "Bearer $token")
+                    .build()
+
+                val response = client.newCall(requestBuilder).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("HTTP ${response.code}: $responseBody")
+                    )
+                }
+
+                val type = object : TypeToken<ApiResponse<QuestionSubmitData>>() {}.type
+                val apiResponse: ApiResponse<QuestionSubmitData> =
+                    gson.fromJson(responseBody, type)
+
+                if (apiResponse.code != 0) {
+                    return@withContext Result.failure(Exception(apiResponse.message))
+                }
+
+                Result.success(
+                    apiResponse.data ?: throw Exception("提交问题返回数据为空")
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * 查询任务结果（轮询用）
+     *
+     * GET /api/v1/tasks/{task_id}/result
+     *
+     * 返回任务状态 + answer_ready + 最终答案。
+     * 当 answer_ready 为 true 时，answer_message 包含学习路径数据。
+     *
+     * 参考 api.md 中的「前端轮询任务结果样例」
+     */
+    suspend fun getTaskResult(
+        token: String,
+        taskId: Long
+    ): Result<TaskResultData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val requestBuilder = Request.Builder()
+                    .url("$BASE_URL/api/v1/tasks/$taskId/result")
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .build()
+
+                val response = client.newCall(requestBuilder).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("HTTP ${response.code}: $responseBody")
+                    )
+                }
+
+                val type = object : TypeToken<ApiResponse<TaskResultData>>() {}.type
+                val apiResponse: ApiResponse<TaskResultData> =
+                    gson.fromJson(responseBody, type)
+
+                if (apiResponse.code != 0) {
+                    return@withContext Result.failure(Exception(apiResponse.message))
+                }
+
+                Result.success(
+                    apiResponse.data ?: throw Exception("任务结果数据为空")
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+
+
 }

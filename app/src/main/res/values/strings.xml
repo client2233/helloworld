@@ -116,4 +116,22 @@
     <string name="plan_card_created">创建: %s</string>
     <string name="plan_empty_hint">还没有学习计划，快去首页创建一个吧</string>
     <string name="plan_card_none">暂无</string>
+
+    <!-- 创建学习计划页面 -->
+    <string name="create_plan_title">创建学习计划</string>
+    <string name="create_plan_header">✨ 开始你的学习之旅</string>
+    <string name="create_plan_subtitle">输入你想学习的内容，AI 将为你生成个性化的学习路径</string>
+    <string name="create_plan_label">📝 你想学习什么？</string>
+    <string name="create_plan_placeholder">例如：我想学习 Python 编程基础，请生成学习路径</string>
+    <string name="create_plan_submit">🔮 生成学习计划</string>
+    <string name="create_plan_hot_topics">—— 或者选择热门方向 ——</string>
+    <string name="create_plan_success_title">🎉 学习计划已生成！</string>
+    <string name="create_plan_node_list">📋 学习路径节点</string>
+    <string name="create_plan_another">🔄 再创建一个</string>
+    <string name="create_plan_view_all">📂 查看所有计划</string>
+    <string name="create_plan_loading_conversation">正在创建会话…</string>
+    <string name="create_plan_loading_question">正在提交学习需求…</string>
+    <string name="create_plan_loading_ai">AI 正在生成学习路径…</string>
+    <string name="create_plan_login_required">请先登录后再创建学习计划</string>
+    <string name="create_plan_token_expired">登录已过期，请重新登录</string>
 </resources>

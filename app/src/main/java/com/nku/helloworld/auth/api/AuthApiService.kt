@@ -2,6 +2,7 @@ package com.nku.helloworld.auth.api
 
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.nku.helloworld.AppConfig
 import com.nku.helloworld.auth.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -17,16 +18,17 @@ import java.util.concurrent.TimeUnit
  */
 object AuthApiService {
 
-    private const val BASE_URL = "http://10.0.2.2:8000" // Android 模拟器中 10.0.2.2 指向宿主机 localhost
+    /** 从配置文件中读取的后端服务器基础地址 */
+    private val BASE_URL get() = AppConfig.baseUrl
 
     private val gson = Gson()
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(AppConfig.connectTimeout.toLong(), TimeUnit.SECONDS)
+            .readTimeout(AppConfig.readTimeout.toLong(), TimeUnit.SECONDS)
+            .writeTimeout(AppConfig.writeTimeout.toLong(), TimeUnit.SECONDS)
             .build()
     }
 
@@ -80,10 +82,10 @@ object AuthApiService {
      * 注册
      * POST /api/v1/auth/register
      */
-    suspend fun register(phone: String, password: String): Result<RegisterData> {
+    suspend fun register(username: String, password: String, displayName: String): Result<RegisterData> {
         return withContext(Dispatchers.IO) {
             try {
-                val requestBody = RegisterRequest(phone, password)
+                val requestBody = RegisterRequest(username, password, displayName)
                 val jsonBody = gson.toJson(requestBody)
 
                 val request = Request.Builder()

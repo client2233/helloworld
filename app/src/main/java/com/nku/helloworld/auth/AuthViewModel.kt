@@ -61,13 +61,17 @@ class AuthViewModel : ViewModel() {
     /**
      * 注册
      */
-    fun register(phone: String, password: String) {
-        if (phone.isBlank()) {
-            _uiState.value = AuthUiState.Error("请输入手机号")
+    fun register(username: String, password: String, displayName: String) {
+        if (username.isBlank()) {
+            _uiState.value = AuthUiState.Error("请输入用户名")
             return
         }
-        if (!phone.matches(Regex("^1\\d{10}$"))) {
-            _uiState.value = AuthUiState.Error("请输入有效的手机号（11位，以1开头）")
+        if (username.length < 3) {
+            _uiState.value = AuthUiState.Error("用户名至少 3 个字符")
+            return
+        }
+        if (displayName.isBlank()) {
+            _uiState.value = AuthUiState.Error("请输入显示名称")
             return
         }
         if (password.isBlank()) {
@@ -81,7 +85,7 @@ class AuthViewModel : ViewModel() {
 
         viewModelScope.launch {
             _uiState.value = AuthUiState.Loading
-            val result = repository.register(phone, password)
+            val result = repository.register(username, password, displayName)
             _uiState.value = result.fold(
                 onSuccess = {
                     AuthUiState.RegisterSuccess

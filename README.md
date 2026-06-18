@@ -103,13 +103,21 @@ app/src/main/java/com/nku/helloworld/
 
 ```bash
 cd ~/helloworld
+
+# 1. 复制配置文件模板，填入实际服务器地址
+cp app/src/main/assets/config.properties.example app/src/main/assets/config.properties
+# 编辑 config.properties，修改 BASE_URL 为实际后端地址
+
+# 2. 构建 APK
 ./gradlew :app:assembleDebug --no-daemon
 ```
 
 构建成功后，可在 Android Studio 中直接运行 `app` 模块到模拟器或真机。
 
-> **注意**：后端服务默认地址为 `http://10.0.2.2:8000`（模拟器中指向宿主机 localhost），
-> 如需连接远程服务，请修改 `AuthApiService.kt` 和 `PlanApiService.kt` 中的 `BASE_URL`。
+> **注意**：所有后端服务器配置（服务器地址、API 密钥等）均保存在
+> `app/src/main/assets/config.properties` 中，**不要**在任何代码中硬编码。
+> 此文件已被 `.gitignore` 忽略，不会提交到版本仓库。
+> 另请参考 `config.properties.example` 模板文件。
 
 ## 常用命令
 
@@ -135,5 +143,6 @@ cd ~/helloworld
 ## 说明
 
 - 仓库已配置 `.gitignore`，会忽略构建产物、IDE 本地文件与系统临时文件。
-- 首页搜索栏的 AI 问答功能需要配置 API URL 和 Token（参考 `HomeFragment.kt` 中的 `sendAiRequest`）。
+- 首页搜索栏的 AI 问答功能需要在 `config.properties` 中配置 `AI_API_URL` 和 `AI_API_KEY`，
+  而非在代码中硬编码。
 - 所有页面均采用 Compose 构建，无 XML 布局文件。

@@ -1,0 +1,26 @@
+# ============================================
+# 后端服务器配置文件（模板）
+# 复制此文件为 config.properties 并填入实际的服务器地址和密钥
+#
+# 使用方法：
+#   cp config.properties.example config.properties
+#   然后编辑 config.properties 填入真实配置
+#
+# 注意：config.properties 已被 .gitignore 忽略，不会提交到仓库
+# ============================================
+
+# 后端服务基础地址（必填）
+# 本地开发模拟器请使用 http://10.0.2.2:8000
+# 远程服务器请使用 http://your-server-ip:8000
+BASE_URL=http://127.0.0.1:8000
+
+# AI 问答 API 地址（可选，为空则不启用 AI 功能）
+AI_API_URL=http://127.0.0.1:8000/v1/chat/completions
+
+# AI 问答 API 密钥（可选，为空则不启用 AI 功能）
+AI_API_KEY=
+
+# 网络超时设置（单位：秒，可选）
+CONNECT_TIMEOUT=15
+READ_TIMEOUT=15
+WRITE_TIMEOUT=15

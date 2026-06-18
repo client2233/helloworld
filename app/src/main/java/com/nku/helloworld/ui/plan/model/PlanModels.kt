@@ -60,3 +60,78 @@ data class LearningProgress(
     val completionRate: Float = 0f,
     val checkinDays: Int = 0
 )
+
+
+// ============================================================
+// 创建学习计划相关模型
+// ============================================================
+
+/**
+ * 问题提交请求体
+ * POST /api/v1/messages/question
+ */
+data class QuestionSubmitRequest(
+    val conversation_id: Long,
+    val content_text: String,
+    val request_id: String
+)
+
+/**
+ * 问题提交响应数据
+ */
+data class QuestionSubmitData(
+    val id: Long,
+    val conversation_id: Long,
+    val role: String = "user",
+    val message_type: String = "question",
+    val content_text: String,
+    val request_id: String? = null,
+    val parent_message_id: Long? = null,
+    val meta_json: Any? = null,
+    val created_at: String = "",
+    val assets: List<Any> = emptyList(),
+    val generation_task_id: Long = 0
+)
+
+/**
+ * 任务结果响应 data
+ * GET /api/v1/tasks/{task_id}/result
+ */
+data class TaskResultData(
+    val task: TaskInfoData = TaskInfoData(),
+    val answer_ready: Boolean = false,
+    val answer_message: AnswerMessageData? = null
+)
+
+data class TaskInfoData(
+    val id: Long = 0,
+    val conversation_id: Long = 0,
+    val status: String = "",
+    val error_message: String? = null
+)
+
+data class AnswerMessageData(
+    val id: Long = 0,
+    val conversation_id: Long = 0,
+    val role: String = "",
+    val message_type: String = "",
+    val content_text: String = "",
+    val meta_json: Map<String, Any>? = null,
+    val assets: List<Any> = emptyList()
+)
+
+/**
+ * 学习路径元数据（从 meta_json 中解析）
+ */
+data class LearningPathMeta(
+    val title: String = "",
+    val goal: String = "",
+    val nodes: List<LearningPathNodeMeta> = emptyList()
+)
+
+data class LearningPathNodeMeta(
+    val id: Int = 0,
+    val title: String = "",
+    val description: String = "",
+    val status: String = "locked"
+)

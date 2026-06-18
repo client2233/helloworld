@@ -35,6 +35,10 @@ class RegisterActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 初始化会话管理器
+        if (!SessionManager.isInitialized()) {
+            SessionManager.init(this)
+        }
         setContent {
             val authViewModel: AuthViewModel = viewModel()
             val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
@@ -64,11 +68,13 @@ class RegisterActivity : ComponentActivity() {
 
             RegisterScreen(
                 isLoading = uiState is AuthUiState.Loading,
+                errorMessage = (uiState as? AuthUiState.Error)?.message,
                 onBack = { finish() },
-                onRegister = { phone, password ->
-                    authViewModel.register(phone, password)
+                onRegister = { username, password, displayName ->
+                    authViewModel.register(username, password, displayName)
                 },
-                onToLogin = { finish() }
+                onToLogin = { finish() },
+                onClearError = { authViewModel.resetState() }
             )
         }
     }
@@ -77,13 +83,22 @@ class RegisterActivity : ComponentActivity() {
 @Composable
 fun RegisterScreen(
     isLoading: Boolean = false,
+    errorMessage: String? = null,
     onBack: () -> Unit,
-    onRegister: (String, String) -> Unit,
-    onToLogin: () -> Unit
+    onRegister: (String, String, String) -> Unit,
+    onToLogin: () -> Unit,
+    onClearError: () -> Unit = {}
 ) {
-    var phone by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf("") }
+    var displayName by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     var isPasswordVisible by remember { mutableStateOf(false) }
+    var isConfirmPasswordVisible by remember { mutableStateOf(false) }
+    var localError by remember { mutableStateOf<String?>(null) }
+
+    // 本地表单校验（不覆盖来自 API 的错误）
+    val displayError = localError ?: errorMessage
 
     Column(
         modifier = Modifier
@@ -91,9 +106,11 @@ fun RegisterScreen(
             .background(Color.White)
             .padding(32.dp)
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.back),
+        // ── 顶部返回按钮 ──
+        Icon(
+            painter = painterResource(id = R.drawable.ic_auth_back),
             contentDescription = stringResource(R.string.auth_back),
+            tint = Color(0xFF5F587E),
             modifier = Modifier
                 .padding(top = 16.dp)
                 .size(32.dp)
@@ -102,6 +119,7 @@ fun RegisterScreen(
 
         Spacer(modifier = Modifier.weight(1f))
 
+        // ── 标题 ──
         Text(
             text = "创建新账号",
             fontSize = 36.sp,
@@ -110,36 +128,113 @@ fun RegisterScreen(
             modifier = Modifier.padding(bottom = 8.dp)
         )
         Text(
-            text = "请输入您的账号和密码",
+            text = "注册后即可同步学习进度",
             fontSize = 14.sp,
             color = Color(0xFFAAA5C0),
-            modifier = Modifier.padding(bottom = 48.dp)
+            modifier = Modifier.padding(bottom = 32.dp)
         )
 
-        // Phone Input
+        // ── 错误提示 ──
+        if (displayError != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF0F0))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⚠️ ",
+                        fontSize = 14.sp
+                    )
+                    Text(
+                        text = displayError,
+                        color = Color(0xFFD32F2F),
+                        fontSize = 13.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = {
+                            localError = null
+                            onClearError()
+                        },
+                        modifier = Modifier.size(18.dp)
+                    ) {
+                        Text("✕", fontSize = 11.sp, color = Color(0xFFD32F2F))
+                    }
+                }
+            }
+        }
+
+        // ── 用户名输入 ──
         RegisterInputField(
-            value = phone,
-            onValueChange = { phone = it },
-            hint = stringResource(R.string.auth_phone_hint),
+            value = username,
+            onValueChange = {
+                username = it
+                localError = null
+                onClearError()
+            },
+            hint = "请输入用户名",
             iconResId = R.drawable.ic_user,
             enabled = !isLoading,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Password Input
+        // ── 显示名称输入 ──
+        RegisterInputField(
+            value = displayName,
+            onValueChange = {
+                displayName = it
+                localError = null
+                onClearError()
+            },
+            hint = "请输入显示名称（如：张三）",
+            iconResId = R.drawable.ic_user,
+            enabled = !isLoading,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // ── 密码输入 ──
         RegisterInputField(
             value = password,
-            onValueChange = { password = it },
+            onValueChange = {
+                password = it
+                localError = null
+                onClearError()
+            },
             hint = stringResource(R.string.auth_password_hint),
             iconResId = R.drawable.ic_password,
             isPassword = true,
             isPasswordVisible = isPasswordVisible,
             onVisibilityChange = { isPasswordVisible = it },
             enabled = !isLoading,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        // ── 确认密码输入 ──
+        RegisterInputField(
+            value = confirmPassword,
+            onValueChange = {
+                confirmPassword = it
+                localError = null
+                onClearError()
+            },
+            hint = stringResource(R.string.auth_confirm_password_hint),
+            iconResId = R.drawable.ic_password,
+            isPassword = true,
+            isPasswordVisible = isConfirmPasswordVisible,
+            onVisibilityChange = { isConfirmPasswordVisible = it },
+            enabled = !isLoading,
             modifier = Modifier.padding(bottom = 24.dp)
         )
 
-        // Register Button
+        // ── 注册按钮 ──
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -150,7 +245,30 @@ fun RegisterScreen(
                         colors = listOf(Color(0xFFFFA726), Color(0xFFD500F9))
                     )
                 )
-                .clickable(enabled = !isLoading) { onRegister(phone, password) },
+                .clickable(enabled = !isLoading) {
+                    // 本地表单校验
+                    when {
+                        username.isBlank() -> {
+                            localError = "请输入用户名"
+                        }
+                        username.length < 3 -> {
+                            localError = "用户名至少 3 个字符"
+                        }
+                        displayName.isBlank() -> {
+                            localError = "请输入显示名称"
+                        }
+                        password.isBlank() || password.length < 6 -> {
+                            localError = "密码长度至少 6 位"
+                        }
+                        confirmPassword != password -> {
+                            localError = "两次输入的密码不一致"
+                        }
+                        else -> {
+                            localError = null
+                            onRegister(username, password, displayName)
+                        }
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             if (isLoading) {
@@ -169,9 +287,9 @@ fun RegisterScreen(
             }
         }
 
-        // To Login Text
+        // ── 去登录 ──
         Text(
-            text = "已有账号？去登录",
+            text = stringResource(R.string.auth_to_login),
             color = Color(0xFF5F587E),
             fontSize = 14.sp,
             modifier = Modifier
@@ -215,9 +333,10 @@ fun RegisterInputField(
                     .padding(horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Image(
+                Icon(
                     painter = painterResource(id = iconResId),
                     contentDescription = null,
+                    tint = Color(0xFF5F587E),
                     modifier = Modifier
                         .size(24.dp)
                         .padding(end = 8.dp)
@@ -229,10 +348,11 @@ fun RegisterInputField(
                     innerTextField()
                 }
                 if (isPassword && onVisibilityChange != null) {
-                    val eyeIcon = if (isPasswordVisible) R.drawable.ic_visibility else R.drawable.ic_visibility_off
-                    Image(
+                    val eyeIcon = if (isPasswordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility
+                    Icon(
                         painter = painterResource(id = eyeIcon),
-                        contentDescription = "Toggle password visibility",
+                        contentDescription = stringResource(R.string.auth_toggle_password_visibility),
+                        tint = Color(0xFF5F587E),
                         modifier = Modifier
                             .size(24.dp)
                             .clickable { onVisibilityChange(!isPasswordVisible) }
@@ -242,12 +362,13 @@ fun RegisterInputField(
         }
     )
 }
+
 @Preview(showBackground = true)
 @Composable
 fun RegisterScreenPreview() {
     RegisterScreen(
         onBack = {},
-        onRegister = { _, _ -> },
+        onRegister = { _, _, _ -> },
         onToLogin = {}
     )
 }

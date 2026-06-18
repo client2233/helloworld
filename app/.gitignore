@@ -1,1 +1,4 @@
 /build
+
+# 后端服务器配置文件（包含真实地址，禁止提交）
+/src/main/assets/config.properties

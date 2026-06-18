@@ -1,5 +1,6 @@
 package com.nku.helloworld.ui.home
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -7,6 +8,7 @@ import android.view.ViewGroup
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,6 +26,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import com.nku.helloworld.ui.plan.CreatePlanActivity
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -91,12 +95,19 @@ fun HomeScreen() {
         aiResultText = "正在呼叫 AI..."
         coroutineScope.launch(Dispatchers.IO) {
             try {
-                val API_URL = ""
-                val APP_ID_OR_TOKEN = ""
+                val aiApiUrl = com.nku.helloworld.AppConfig.aiApiUrl
+                val aiApiKey = com.nku.helloworld.AppConfig.aiApiKey
+
+                if (aiApiUrl.isEmpty() || aiApiKey.isEmpty()) {
+                    withContext(Dispatchers.Main) {
+                        aiResultText = "AI 功能未配置，请在 config.properties 中设置 AI_API_URL 和 AI_API_KEY"
+                    }
+                    return@launch
+                }
 
                 val client = OkHttpClient.Builder()
-                    .connectTimeout(90, TimeUnit.SECONDS)
-                    .readTimeout(90, TimeUnit.SECONDS)
+                    .connectTimeout(com.nku.helloworld.AppConfig.connectTimeout.toLong() * 6, TimeUnit.SECONDS)
+                    .readTimeout(com.nku.helloworld.AppConfig.readTimeout.toLong() * 6, TimeUnit.SECONDS)
                     .build()
 
                 val jsonBody = JSONObject().apply {
@@ -111,11 +122,10 @@ fun HomeScreen() {
                 }
 
                 val body = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-                val targetUrl = if (API_URL.isNotEmpty()) API_URL else "http://10.0.2.2:8080/v1/chat/completions"
                 val request = Request.Builder()
-                    .url(targetUrl)
+                    .url(aiApiUrl)
                     .post(body)
-                    .header("Authorization", "Bearer $APP_ID_OR_TOKEN")
+                    .header("Authorization", "Bearer $aiApiKey")
                     .build()
 
                 val response = client.newCall(request).execute()
@@ -281,6 +291,7 @@ fun HomeTopBar(onSearch: (String) -> Unit) {
 
 @Composable
 fun HomeSheetContent(items: List<HomeRecentItem>, aiResultText: String) {
+    val context = LocalContext.current
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
@@ -304,7 +315,11 @@ fun HomeSheetContent(items: List<HomeRecentItem>, aiResultText: String) {
                 Card(
                     modifier = Modifier
                         .weight(1f)
-                        .height(96.dp),
+                        .height(96.dp)
+                        .clickable {
+                            val intent = Intent(context, CreatePlanActivity::class.java)
+                            context.startActivity(intent)
+                        },
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(containerColor = colorResource(R.color.brand_primary_soft))
                 ) {

@@ -21,8 +21,9 @@ data class LoginRequest(
  * 注册请求体
  */
 data class RegisterRequest(
-    val phone: String,
-    val password: String
+    val username: String,
+    val password: String,
+    val display_name: String
 )
 
 /**

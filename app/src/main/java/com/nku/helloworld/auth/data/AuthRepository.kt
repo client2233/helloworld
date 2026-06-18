@@ -19,7 +19,7 @@ class AuthRepository {
     /**
      * 执行注册，返回 Result<RegisterData>
      */
-    suspend fun register(phone: String, password: String): Result<RegisterData> {
-        return AuthApiService.register(phone, password)
+    suspend fun register(username: String, password: String, displayName: String): Result<RegisterData> {
+        return AuthApiService.register(username, password, displayName)
     }
 }
