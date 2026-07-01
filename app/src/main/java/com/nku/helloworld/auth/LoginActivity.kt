@@ -41,6 +41,9 @@ class LoginActivity : ComponentActivity() {
             val authViewModel: AuthViewModel = viewModel()
             val uiState by authViewModel.uiState.collectAsStateWithLifecycle()
 
+            // 记住用户输入的账号名，用于登录成功后保存
+            var savedUsername by remember { mutableStateOf("") }
+
             // 处理 UI 状态变化
             LaunchedEffect(uiState) {
                 when (val state = uiState) {
@@ -49,7 +52,8 @@ class LoginActivity : ComponentActivity() {
                         // 保存 token 到本地会话
                         SessionManager.saveLogin(
                             accessToken = loginData.access_token,
-                            nickname = "",
+                            nickname = savedUsername,
+                            displayName = savedUsername,
                             phone = "",
                             userId = 0
                         )
@@ -75,6 +79,7 @@ class LoginActivity : ComponentActivity() {
             LoginScreen(
                 isLoading = uiState is AuthUiState.Loading,
                 onLogin = { username, password ->
+                    savedUsername = username
                     authViewModel.login(username, password)
                 },
                 onToRegister = {

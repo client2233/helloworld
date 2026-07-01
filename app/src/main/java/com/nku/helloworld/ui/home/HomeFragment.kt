@@ -27,7 +27,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import com.nku.helloworld.ui.plan.CreatePlanActivity
+import com.nku.helloworld.auth.SessionManager
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -79,6 +81,13 @@ fun HomeScreen() {
         HomeRecentItem("晚间复盘打卡", stringResource(R.string.home_category_study), "21:30", R.color.status_pending),
         HomeRecentItem("晨读完成记录", stringResource(R.string.home_category_study), "06:40", R.color.status_done),
     )
+
+    // 获取登录用户信息
+    val userProfile = SessionManager.getUserProfile()
+    val displayName = userProfile.displayName.ifEmpty {
+        userProfile.nickname.ifEmpty { "用户" }
+    }
+    val avatarUrl = userProfile.avatarUrl
 
     val scaffoldState = rememberBottomSheetScaffoldState(
         bottomSheetState = rememberStandardBottomSheetState(
@@ -155,12 +164,16 @@ fun HomeScreen() {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        HomeTopBar(onSearch = { sendAiRequest(it) })
+        HomeTopBar(
+            displayName = displayName,
+            avatarUrl = avatarUrl,
+            onSearch = { sendAiRequest(it) }
+        )
 
         BottomSheetScaffold(
             modifier = Modifier.weight(1f),
             scaffoldState = scaffoldState,
-            sheetPeekHeight = 190.dp, // 调整默认露出高度，使其只显示“学习计划”和“打卡提醒”的卡片区域
+            sheetPeekHeight = 190.dp, // 调整默认露出高度，使其只显示"学习计划"和"打卡提醒"的卡片区域
             sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             sheetContainerColor = colorResource(R.color.surface_white),
             sheetShadowElevation = 4.dp,
@@ -200,7 +213,11 @@ fun HomeScreen() {
 }
 
 @Composable
-fun HomeTopBar(onSearch: (String) -> Unit) {
+fun HomeTopBar(
+    displayName: String = "用户",
+    avatarUrl: String = "",
+    onSearch: (String) -> Unit
+) {
     var query by remember { mutableStateOf("") }
 
     Column(
@@ -220,7 +237,7 @@ fun HomeTopBar(onSearch: (String) -> Unit) {
                     fontSize = 12.sp
                 )
                 Text(
-                    text = stringResource(R.string.home_greeting),
+                    text = "你好，$displayName",
                     color = colorResource(R.color.text_primary),
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
@@ -228,6 +245,7 @@ fun HomeTopBar(onSearch: (String) -> Unit) {
                 )
             }
 
+            // 用户头像
             Box(
                 modifier = Modifier
                     .size(40.dp)
@@ -236,12 +254,22 @@ fun HomeTopBar(onSearch: (String) -> Unit) {
                     .border(1.dp, colorResource(R.color.divider_soft), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "LW",
-                    color = colorResource(R.color.text_primary),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                if (avatarUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = "用户头像",
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    Text(
+                        text = displayName.take(1).ifEmpty { "?" },
+                        color = colorResource(R.color.text_primary),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
 

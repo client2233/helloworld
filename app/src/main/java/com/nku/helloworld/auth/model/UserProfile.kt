@@ -6,6 +6,8 @@ package com.nku.helloworld.auth.model
 data class UserProfile(
     val id: Int = 0,
     val nickname: String = "用户",
+    val displayName: String = "",
+    val avatarUrl: String = "",
     val phone: String = "",
     val accessToken: String = "",
     /** 已完成学习目标数量 */

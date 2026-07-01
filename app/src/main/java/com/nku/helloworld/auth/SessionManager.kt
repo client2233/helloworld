@@ -13,6 +13,8 @@ object SessionManager {
     private const val KEY_ACCESS_TOKEN = "access_token"
     private const val KEY_USER_ID = "user_id"
     private const val KEY_NICKNAME = "nickname"
+    private const val KEY_DISPLAY_NAME = "display_name"
+    private const val KEY_AVATAR_URL = "avatar_url"
     private const val KEY_PHONE = "phone"
     private const val KEY_IS_LOGGED_IN = "is_logged_in"
 
@@ -35,10 +37,19 @@ object SessionManager {
     /**
      * 保存登录信息
      */
-    fun saveLogin(accessToken: String, nickname: String = "", phone: String = "", userId: Int = 0) {
+    fun saveLogin(
+        accessToken: String,
+        nickname: String = "",
+        displayName: String = "",
+        avatarUrl: String = "",
+        phone: String = "",
+        userId: Int = 0
+    ) {
         prefs.edit()
             .putString(KEY_ACCESS_TOKEN, accessToken)
             .putString(KEY_NICKNAME, nickname)
+            .putString(KEY_DISPLAY_NAME, displayName)
+            .putString(KEY_AVATAR_URL, avatarUrl)
             .putString(KEY_PHONE, phone)
             .putInt(KEY_USER_ID, userId)
             .putBoolean(KEY_IS_LOGGED_IN, true)
@@ -57,6 +68,8 @@ object SessionManager {
         return UserProfile(
             id = prefs.getInt(KEY_USER_ID, 0),
             nickname = prefs.getString(KEY_NICKNAME, "用户") ?: "用户",
+            displayName = prefs.getString(KEY_DISPLAY_NAME, "") ?: "",
+            avatarUrl = prefs.getString(KEY_AVATAR_URL, "") ?: "",
             phone = prefs.getString(KEY_PHONE, "") ?: "",
             accessToken = prefs.getString(KEY_ACCESS_TOKEN, "") ?: ""
         )
@@ -66,7 +79,27 @@ object SessionManager {
      * 更新昵称
      */
     fun updateNickname(nickname: String) {
-        prefs.edit().putString(KEY_NICKNAME, nickname).apply()
+        prefs.edit()
+            .putString(KEY_NICKNAME, nickname)
+            .apply()
+    }
+
+    /**
+     * 更新显示名称
+     */
+    fun updateDisplayName(displayName: String) {
+        prefs.edit()
+            .putString(KEY_DISPLAY_NAME, displayName)
+            .apply()
+    }
+
+    /**
+     * 更新头像地址
+     */
+    fun updateAvatarUrl(avatarUrl: String) {
+        prefs.edit()
+            .putString(KEY_AVATAR_URL, avatarUrl)
+            .apply()
     }
 
     /**

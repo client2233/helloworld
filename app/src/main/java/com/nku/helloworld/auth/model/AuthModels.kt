@@ -1,12 +1,14 @@
 package com.nku.helloworld.auth.model
 
+import com.google.gson.annotations.SerializedName
+
 /**
  * 统一 API 响应结构，对应后端 {code, message, data}
  */
 data class ApiResponse<T>(
     val code: Int,
     val message: String,
-    val data: T?
+    val data: T?,
 )
 
 /**
@@ -14,7 +16,7 @@ data class ApiResponse<T>(
  */
 data class LoginRequest(
     val username: String,
-    val password: String
+    val password: String,
 )
 
 /**
@@ -23,7 +25,8 @@ data class LoginRequest(
 data class RegisterRequest(
     val username: String,
     val password: String,
-    val display_name: String
+    @SerializedName("display_name")
+    val displayName: String,
 )
 
 /**
@@ -31,13 +34,18 @@ data class RegisterRequest(
  */
 data class LoginData(
     val access_token: String,
-    val token_type: String = "bearer"
+    val token_type: String = "bearer",
 )
 
 /**
  * 注册成功返回的数据
  */
 data class RegisterData(
-    val id: Int? = null,
-    val message: String = "注册成功"
+    @SerializedName("avatar_url")
+    val avatarURL: String = "",
+    @SerializedName("display_name")
+    val displayName: String = "",
+    val id: Long = 0,
+    val status: String = "",
+    val username: String = "",
 )

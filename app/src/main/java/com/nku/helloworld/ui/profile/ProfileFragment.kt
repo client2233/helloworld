@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import coil.compose.AsyncImage
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -114,11 +115,15 @@ fun ProfileApp() {
     // 编辑昵称对话框
     if (nicknameDialogShown) {
         EditNicknameDialog(
-            currentNickname = userProfile.nickname,
+            currentNickname = userProfile.displayName.ifEmpty { userProfile.nickname },
             onDismiss = { nicknameDialogShown = false },
             onConfirm = { newNickname ->
                 SessionManager.updateNickname(newNickname)
-                userProfile = userProfile.copy(nickname = newNickname)
+                SessionManager.updateDisplayName(newNickname)
+                userProfile = userProfile.copy(
+                    nickname = newNickname,
+                    displayName = newNickname
+                )
                 nicknameDialogShown = false
             }
         )
@@ -277,6 +282,12 @@ fun UserProfileSection(
     userProfile: UserProfile,
     onEditNickname: () -> Unit
 ) {
+    // 取显示名称，优先 displayName，降级到 nickname
+    val displayName = userProfile.displayName.ifEmpty {
+        userProfile.nickname.ifEmpty { "用户" }
+    }
+    val avatarUrl = userProfile.avatarUrl
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -301,12 +312,22 @@ fun UserProfileSection(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = userProfile.nickname.take(1),
-                    color = Color.White,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                if (avatarUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = "用户头像",
+                        modifier = Modifier
+                            .size(80.dp)
+                            .clip(CircleShape)
+                    )
+                } else {
+                    Text(
+                        text = displayName.take(1),
+                        color = Color.White,
+                        fontSize = 32.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             // 相机/更换头像悬浮按钮
@@ -337,7 +358,7 @@ fun UserProfileSection(
             modifier = Modifier.clickable(onClick = onEditNickname)
         ) {
             Text(
-                text = userProfile.nickname,
+                text = displayName,
                 color = colorResource(id = R.color.text_primary),
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
@@ -662,6 +683,7 @@ fun ProfileLoggedInPreview() {
         userProfile = UserProfile(
             id = 10086,
             nickname = "LittleWatter",
+            displayName = "LittleWatter",
             phone = "13800138000",
             completedGoals = 12,
             totalDays = 68,
