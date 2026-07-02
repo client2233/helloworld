@@ -10,16 +10,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ComposeView
+import kotlinx.coroutines.flow.collect
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -42,7 +44,7 @@ import com.nku.helloworld.ui.plan.model.PlanItem
  * 学习计划页面 Fragment
  *
  * 展示用户的所有学习计划，采用两列卡片化网格布局，
- * 色彩鲜明，信息层级清晰。
+ * 支持下拉刷新、本地缓存和从 AI 对话页面返回后自动刷新。
  */
 class PlanFragment : Fragment() {
 
@@ -73,6 +75,7 @@ private val MacaronPalette = listOf(
 /**
  * 学习计划页面主入口 Composable
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlanScreen(
     viewModel: PlanViewModel = viewModel(),
@@ -81,7 +84,12 @@ fun PlanScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // 监听生命周期变化，页面恢复时刷新计划列表（例如从登录页返回）
+    // 下拉刷新状态
+    val pullToRefreshState = rememberPullToRefreshState()
+    // 标记本次刷新是否由用户下拉触发（而非代码自动刷新）
+    val isRefreshByPull = remember { mutableStateOf(false) }
+
+    // 监听生命周期变化，页面恢复时静默刷新（不触发下拉动画）
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -92,97 +100,177 @@ fun PlanScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Column(
+    // 当下拉触发刷新时
+    if (pullToRefreshState.isRefreshing) {
+        LaunchedEffect(Unit) {
+            isRefreshByPull.value = true
+            viewModel.refresh()
+        }
+    }
+
+    // 持续监听 isRefreshing 状态，变为 false 时结束下拉动画
+    LaunchedEffect(Unit) {
+        snapshotFlow { uiState.isRefreshing }
+            .collect { refreshing ->
+                if (!refreshing && isRefreshByPull.value) {
+                    pullToRefreshState.endRefresh()
+                    isRefreshByPull.value = false
+                }
+            }
+    }
+
+    // 最外层 Box：nestedScroll 包裹整个页面，刷新圆出现在屏幕最顶部
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(colorResource(R.color.app_bg))
+            .nestedScroll(pullToRefreshState.nestedScrollConnection)
     ) {
-        // ── 1. 顶部导航栏 ──
-        PlanTopBar()
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            // ── 1. 顶部导航栏 ──
+            PlanTopBar(
+                onRefresh = { viewModel.refresh() },
+                isLoading = uiState.isLoading
+            )
 
-        // ── 2. 计划卡片网格列表 ──
-        if (uiState.isLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(
-                    color = colorResource(R.color.brand_primary)
-                )
-            }
-        } else if (uiState.plans.isEmpty()) {
-            // 空状态
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "暂无学习计划",
-                        color = colorResource(R.color.text_secondary),
-                        fontSize = 16.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.plan_empty_hint),
-                        color = colorResource(R.color.text_muted),
-                        fontSize = 13.sp
+            // ── 2. 内容区域 ──
+            if (uiState.isLoading && uiState.plans.isEmpty()) {
+                // 首次加载中
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = colorResource(R.color.brand_primary)
                     )
                 }
-            }
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 16.dp,
-                    bottom = 8.dp
-                ),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(
-                    items = uiState.plans,
-                    key = { it.id }
-                ) { plan ->
-                    PlanCard(
-                        plan = plan,
-                        onClick = { onPlanClick?.invoke(plan) }
+            } else if (uiState.plans.isEmpty()) {
+                // 空状态
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    EmptyPlanState(
+                        error = uiState.error,
+                        onRefresh = { viewModel.refresh() }
                     )
                 }
+            } else {
+                // 计划卡片网格
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(2),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 16.dp,
+                        bottom = 8.dp
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(
+                        items = uiState.plans,
+                        key = { it.id }
+                    ) { plan ->
+                        PlanCard(
+                            plan = plan,
+                            onClick = { onPlanClick?.invoke(plan) }
+                        )
+                    }
+                }
             }
+
+            // ── 3. 底部提示语 ──
+            PlanFooter()
+
+            // ── 底部留白 ──
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // ── 3. 底部提示语 ──
-        PlanFooter()
-
-        // ── 底部留白 ──
-        Spacer(modifier = Modifier.height(8.dp))
+        // 下拉刷新指示器（放在最外层 Box 顶部，盖住所有内容）
+        // Material3 内部根据 progress / isRefreshing 自动控制显隐
+        PullToRefreshContainer(
+            state = pullToRefreshState,
+            modifier = Modifier.align(Alignment.TopCenter),
+            containerColor = colorResource(R.color.surface_white),
+            contentColor = colorResource(R.color.brand_primary)
+        )
     }
 
-    // 错误提示（可扩展为 Snackbar）
+    // 错误提示
     uiState.error?.let { errorMsg ->
+        val snackbarHostState = remember { SnackbarHostState() }
         LaunchedEffect(errorMsg) {
-            // 这里可以显示 Snackbar，目前仅做预留
-            // scaffoldState.snackbarHostState.showSnackbar(errorMsg)
+            snackbarHostState.showSnackbar(
+                message = errorMsg,
+                duration = SnackbarDuration.Short
+            )
         }
     }
 }
 
 // ============================================================
-// 顶部导航栏
+// 空计划状态
 // ============================================================
 
 @Composable
-fun PlanTopBar() {
+fun EmptyPlanState(
+    error: String?,
+    onRefresh: () -> Unit
+) {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "暂无学习计划",
+                color = colorResource(R.color.text_secondary),
+                fontSize = 16.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.plan_empty_hint),
+                color = colorResource(R.color.text_muted),
+                fontSize = 13.sp
+            )
+            if (error != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = error,
+                    color = colorResource(R.color.brand_red),
+                    fontSize = 13.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                FilledTonalButton(
+                    onClick = onRefresh,
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("重试", fontSize = 14.sp)
+                }
+            }
+        }
+    }
+}
+
+// ============================================================
+// 顶部导航栏（带刷新按钮）
+// ============================================================
+
+@Composable
+fun PlanTopBar(
+    onRefresh: () -> Unit = {},
+    isLoading: Boolean = false
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = colorResource(R.color.surface_white),
@@ -194,9 +282,9 @@ fun PlanTopBar() {
                 .padding(horizontal = 4.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 返回按钮（左侧）
+            // 返回按钮（左侧，预留）
             IconButton(
-                onClick = { /* 返回上一级，预留 */ },
+                onClick = { },
                 modifier = Modifier.size(48.dp)
             ) {
                 Icon(
@@ -217,8 +305,27 @@ fun PlanTopBar() {
                 modifier = Modifier.weight(1f)
             )
 
-            // 右侧占位（保持对称）
-            Spacer(modifier = Modifier.size(48.dp))
+            // 右侧刷新按钮
+            IconButton(
+                onClick = onRefresh,
+                modifier = Modifier.size(48.dp),
+                enabled = !isLoading
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = colorResource(R.color.brand_primary),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_edit),
+                        contentDescription = "刷新",
+                        tint = colorResource(R.color.text_secondary),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -247,8 +354,7 @@ fun PlanCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // 核心标题区（中部居上）
-            // 特大号白色粗体字，支持自动换行与缩进
+            // 核心标题区
             Text(
                 text = plan.title,
                 color = Color.White,
@@ -259,14 +365,13 @@ fun PlanCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 40.dp)  // 撑开底部空间与日期区域隔离
+                    .padding(bottom = 40.dp)
             )
 
-            // 时间/状态数据区（底部贴边）
+            // 时间/状态数据区
             Column(
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // 动态日期项 1：最新执行/关联日期
                 Text(
                     text = if (!plan.latestDate.isNullOrBlank() && plan.latestDate != "暂无")
                         "最近: ${plan.latestDate}"
@@ -280,7 +385,6 @@ fun PlanCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // 动态日期项 2：创建日期
                 Text(
                     text = "创建: ${plan.createdDate ?: "未知"}",
                     color = Color.White.copy(alpha = 0.6f),

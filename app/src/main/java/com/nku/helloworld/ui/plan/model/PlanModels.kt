@@ -135,3 +135,25 @@ data class LearningPathNodeMeta(
     val description: String = "",
     val status: String = "locked"
 )
+
+
+
+// ============================================================
+// 聊天对话模型（AI 对话创建学习计划）
+// ============================================================
+
+/**
+ * 聊天消息，用于 AI 对话式创建学习计划
+ *
+ * role: "user" 为用户消息，"assistant" 为 AI 回复
+ * isLoading: 用于显示 AI 正在输入的占位消息
+ * learningPath: 当 AI 回复包含学习路径时，附带解析后的路径数据
+ */
+data class ChatMessage(
+    val id: String = "",
+    val role: String = "user",
+    val content: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+    val isLoading: Boolean = false,
+    val learningPath: LearningPathMeta? = null
+)

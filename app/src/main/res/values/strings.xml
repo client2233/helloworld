@@ -134,4 +134,23 @@
     <string name="create_plan_loading_ai">AI 正在生成学习路径…</string>
     <string name="create_plan_login_required">请先登录后再创建学习计划</string>
     <string name="create_plan_token_expired">登录已过期，请重新登录</string>
+    <!-- AI 对话创建学习计划 -->
+    <string name="chat_create_plan_title">AI 创建学习计划</string>
+    <string name="chat_welcome_title">🤖 AI 帮你创建学习计划</string>
+    <string name="chat_welcome_desc">输入你想学习的内容，AI 会为你生成个性化的学习路径。
+你可以和 AI 对话，逐步完善学习计划。</string>
+    <string name="chat_hot_topics">💡 试试这些方向</string>
+    <string name="chat_input_placeholder">输入你想学习的内容…</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_ai_name">AI 学习助手</string>
+    <string name="chat_loading_conversation">正在创建会话…</string>
+    <string name="chat_loading_thinking">AI 正在思考…</string>
+    <string name="chat_loading_generating">AI 正在生成学习路径…</string>
+    <string name="chat_processing">处理中…</string>
+    <string name="chat_learning_path_ready">学习路径已生成</string>
+    <string name="chat_view_detail">查看详情</string>
+    <string name="chat_login_required">请先登录后再创建学习计划</string>
+    <string name="chat_token_expired">登录已过期，请重新登录</string>
+    <string name="chat_error_prefix">😅 抱歉，生成学习路径时遇到了问题：</string>
+    <string name="chat_retry_hint">请稍后再试，或者换一种描述方式。</string>
 </resources>

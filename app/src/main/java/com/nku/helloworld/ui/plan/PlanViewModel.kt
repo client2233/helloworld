@@ -1,6 +1,7 @@
 package com.nku.helloworld.ui.plan
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.nku.helloworld.auth.SessionManager
 import com.nku.helloworld.ui.plan.api.PlanApiService
@@ -16,118 +17,78 @@ import kotlinx.coroutines.launch
 data class PlanUiState(
     val plans: List<PlanItem> = emptyList(),
     val isLoading: Boolean = false,
+    val isRefreshing: Boolean = false,
     val error: String? = null
 )
 
 /**
  * 学习计划页面 ViewModel
  *
- * 负责管理计划列表数据，支持从 API 获取或使用本地 Mock 数据。
+ * 负责管理计划列表数据，支持从 API 获取或使用本地存储的计划。
  * 后端接口位置参考 PlanApiService 中的注释。
  */
-class PlanViewModel : ViewModel() {
+class PlanViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(PlanUiState())
     val uiState: StateFlow<PlanUiState> = _uiState.asStateFlow()
 
     init {
-        // 初始化时判断登录状态，已登录则调 API，否则加载示例数据
+        if (!PlanLocalStorage.isInitialized()) {
+            PlanLocalStorage.init(application)
+        }
+        // 加载本地保存的计划
+        loadLocalPlans()
+        // 已登录则从 API 获取最新数据
         if (SessionManager.isLoggedIn()) {
             fetchPlansFromApi()
-        } else {
-            loadMockData()
         }
     }
 
     /**
-     * 加载示例数据（用于 UI 开发阶段）
-     *
-     * 展示不同长度的标题、不同的日期状态（含 "暂无" 缺省值），
-     * 覆盖色彩索引的多种取值。
+     * 从本地存储加载计划
      */
-    private fun loadMockData() {
-        _uiState.value = PlanUiState(
-            plans = listOf(
-                PlanItem(
-                    id = 1,
-                    title = "Python 入门",
-                    latestDate = "2026-05-28",
-                    createdDate = "2026-05-01",
-                    progress = 0.6f,
-                    colorIndex = 0
-                ),
-                PlanItem(
-                    id = 2,
-                    title = "Java 进阶学习",
-                    latestDate = "2026-05-27",
-                    createdDate = "2026-04-15",
-                    progress = 0.3f,
-                    colorIndex = 1
-                ),
-                PlanItem(
-                    id = 3,
-                    title = "数据结构与算法",
-                    latestDate = "2026-05-25",
-                    createdDate = "2026-03-10",
-                    progress = 0.8f,
-                    colorIndex = 2
-                ),
-                PlanItem(
-                    id = 4,
-                    title = "Android 开发实战",
-                    latestDate = "2026-05-20",
-                    createdDate = "2026-04-01",
-                    progress = 0.4f,
-                    colorIndex = 3
-                ),
-                PlanItem(
-                    id = 5,
-                    title = "英语口语练习",
-                    latestDate = "2026-05-29",
-                    createdDate = "2026-05-05",
-                    progress = 0.2f,
-                    colorIndex = 4
-                ),
-                PlanItem(
-                    id = 6,
-                    title = "机器学习基础",
-                    latestDate = null,  // 缺省状态：暂无
-                    createdDate = "2026-05-30",
-                    progress = 0.0f,
-                    colorIndex = 0
-                ),
-                // 新增一个长标题卡片，测试自动换行
-                PlanItem(
-                    id = 7,
-                    title = "计算机组成原理与体系结构",
-                    latestDate = "2026-05-26",
-                    createdDate = "2026-02-20",
-                    progress = 0.5f,
-                    colorIndex = 1
-                ),
-                PlanItem(
-                    id = 8,
-                    title = "高等数学",
-                    latestDate = "暂无",
-                    createdDate = "2026-05-30",
-                    progress = 0.0f,
-                    colorIndex = 2
-                )
+    private fun loadLocalPlans() {
+        val localPlans = PlanLocalStorage.loadAllPlans()
+        if (localPlans.isNotEmpty()) {
+            _uiState.value = _uiState.value.copy(
+                plans = localPlans,
+                isLoading = false
             )
-        )
+        }
+    }
+
+    /**
+     * 保存一个计划到本地存储（由 CreatePlanActivity 调用）
+     */
+    fun saveLocalPlan(plan: PlanItem) {
+        PlanLocalStorage.savePlan(plan)
+        // 刷新 UI 状态
+        val currentPlans = _uiState.value.plans.toMutableList()
+        val existingIndex = currentPlans.indexOfFirst { it.id == plan.id }
+        if (existingIndex >= 0) {
+            currentPlans[existingIndex] = plan
+        } else {
+            currentPlans.add(0, plan)
+        }
+        _uiState.value = _uiState.value.copy(plans = currentPlans)
     }
 
     /**
      * 刷新计划列表 — 供外部在登录状态变化时调用
      *
-     * 已登录 → 调 API
-     * 未登录 → 清空列表
+     * 已登录 → 调 API + 加载本地计划
+     * 未登录 → 仅加载本地计划
      */
     fun refresh() {
+        _uiState.value = _uiState.value.copy(isRefreshing = true, error = null)
+
+        // 总是加载本地计划
+        loadLocalPlans()
+
         if (SessionManager.isLoggedIn()) {
-            fetchPlansFromApi()
+            fetchPlansFromApi(isRefresh = true)
         } else {
-            _uiState.value = PlanUiState()
+            _uiState.value = _uiState.value.copy(isRefreshing = false)
         }
     }
 
@@ -139,17 +100,20 @@ class PlanViewModel : ViewModel() {
      * 2. 对于每个会话（可选），可进一步调用
      *    GET /api/v1/learning-paths/conversations/{id}/current 获取学习路径
      *
-     * 会自动处理未登录状态并给出提示。
+     * 如果 API 不可用，保留本地已保存的计划。
      */
-    fun fetchPlansFromApi() {
+    fun fetchPlansFromApi(isRefresh: Boolean = false) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            if (!isRefresh) {
+                _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+            }
 
             try {
-val token = SessionManager.getAccessToken() ?: ""
+                val token = SessionManager.getAccessToken() ?: ""
                 if (token.isEmpty()) {
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
+                        isRefreshing = false,
                         error = "请先登录"
                     )
                     return@launch
@@ -158,7 +122,7 @@ val token = SessionManager.getAccessToken() ?: ""
                 val result = PlanApiService.getConversations(token)
                 result.fold(
                     onSuccess = { conversations ->
-                        val plans = conversations.mapIndexed { index, conv ->
+                        val apiPlans = conversations.mapIndexed { index, conv ->
                             PlanItem(
                                 id = conv.id,
                                 title = conv.title,
@@ -168,22 +132,33 @@ val token = SessionManager.getAccessToken() ?: ""
                                 conversationId = conv.id
                             )
                         }
+                        // 合并 API 计划和本地计划（本地计划优先展示）
+                        val localPlans = PlanLocalStorage.loadAllPlans()
+                        val mergedPlans = (localPlans + apiPlans).distinctBy { it.id }
                         _uiState.value = PlanUiState(
-                            plans = if (plans.isNotEmpty()) plans else _uiState.value.plans,
-                            isLoading = false
+                            plans = mergedPlans,
+                            isLoading = false,
+                            isRefreshing = false
                         )
                     },
                     onFailure = { error ->
+                        // API 不可用时，保留本地计划
+                        val localPlans = PlanLocalStorage.loadAllPlans()
                         _uiState.value = _uiState.value.copy(
+                            plans = if (localPlans.isNotEmpty()) localPlans else _uiState.value.plans,
                             isLoading = false,
-                            error = error.message ?: "获取计划失败"
+                            isRefreshing = false,
+                            error = if (localPlans.isEmpty()) (error.message ?: "获取计划失败") else null
                         )
                     }
                 )
             } catch (e: Exception) {
+                val localPlans = PlanLocalStorage.loadAllPlans()
                 _uiState.value = _uiState.value.copy(
+                    plans = if (localPlans.isNotEmpty()) localPlans else _uiState.value.plans,
                     isLoading = false,
-                    error = e.message ?: "网络错误"
+                    isRefreshing = false,
+                    error = if (localPlans.isEmpty()) (e.message ?: "网络错误") else null
                 )
             }
         }

@@ -1,0 +1,446 @@
+注册
+POST /api/v1/auth/register
+{
+    "username": "nku123",
+    "password": "Test@1234",
+    "display_name": "测试用户"
+}
+
+{
+    "code": 0,
+    "message": "注册成功",
+    "data": {
+        "id": 9,
+        "username": "nku123",
+        "display_name": "Jordan Lee",
+        "avatar_url": "https://api.dicebear.com/9.x/adventurer/svg?seed=JordanLee",
+        "status": "active"
+    }
+}
+
+
+
+登录
+POST /api/v1/auth/login
+{
+  "username": "nku123",
+  "password": "Test@1234"
+}
+
+{
+    "code": 0,
+    "message": "Login success",
+    "data": {
+        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5IiwiZXhwIjoxNzgzMDQ5NTI5fQ.nfGaPA6EyoNiHqfk4Sudyo9c1E6F6gKROpxmscbCZok",
+        "token_type": "bearer",
+        "expires_in": 86400,
+        "user": {
+            "id": 9,
+            "username": "nku123",
+            "display_name": "Jordan Lee",
+            "avatar_url": "https://api.dicebear.com/9.x/adventurer/svg?seed=JordanLee",
+            "status": "active"
+        }
+    }
+}
+
+
+创建会话
+POST /api/v1/conversations
+{
+  "title": "Apifox接口测试会话"
+}
+
+{
+    "code": 0,
+    "message": "Conversation created",
+    "data": {
+        "id": 4,
+        "user_id": 9,
+        "title": "Apifox接口测试会话",
+        "current_status": "active",
+        "last_message_at": null,
+        "created_at": "2026-07-02T03:32:34",
+        "updated_at": "2026-07-02T03:32:34"
+    }
+}
+
+
+提交问题（树节点）
+POST /api/v1/qa-nodes/question
+问题一
+{
+    "conversation_id": 4,
+    "content_text": "我想学习 Python，应该怎么入门？",
+    "parent_node_id": null,
+    "node_title": "Python 入门",
+    "request_id": "qa-root-001"
+}
+
+{
+    "code": 0,
+    "message": "Question accepted",
+    "data": {
+        "node": {
+            "id": 1,
+            "user_id": 9,
+            "conversation_id": 4,
+            "parent_node_id": null,
+            "root_node_id": null,
+            "depth": 0,
+            "sort_no": 1,
+            "title": "Python 入门",
+            "question_text": "我想学习 Python，应该怎么入门？",
+            "answer_text": null,
+            "summary_text": null,
+            "key_points_json": null,
+            "suggested_questions_json": null,
+            "status": "answering",
+            "request_id": "qa-root-001",
+            "question_message_id": 4,
+            "answer_message_id": null,
+            "generation_task_id": 4,
+            "meta_json": null,
+            "created_at": "2026-07-02T03:33:34",
+            "updated_at": "2026-07-02T03:33:34"
+        },
+        "generation_task_id": 4
+    }
+}
+
+
+查询任务结果（轮询AI回答）
+GET /api/v1/tasks/{task_id}/result     设task_id=4，上一条的最后generation_task_id
+{
+    "code": 0,
+    "message": "ok",
+    "data": {
+        "task": {
+            "id": 4,
+            "conversation_id": 4,
+            "question_message_id": 4,
+            "answer_message_id": 5,
+            "replace_answer_message_id": null,
+            "feedback_id": null,
+            "status": "success",
+            "frontend_request_id": "qa-root-001",
+            "backend_task_id": "job-df4ae53c9abe4e9caa8f31ac",
+            "worker_id": "worker-1",
+            "dispatch_attempts": 1,
+            "claimed_at": "2026-07-02T03:33:36",
+            "lease_expires_at": null,
+            "model_name": "Volc-DeepSeek-V3.2",
+            "error_message": null,
+            "finished_at": "2026-07-02T03:34:50",
+            "created_at": "2026-07-02T03:33:34",
+            "updated_at": "2026-07-02T03:34:50"
+        },
+        "answer_ready": true,
+        "answer_message": {
+            "id": 5,
+            "conversation_id": 4,
+            "role": "assistant",
+            "message_type": "answer",
+            "content_text": "Python 编程基础入门",
+            "request_id": "answer-task-4",
+            "parent_message_id": 4,
+            "meta_json": {
+                "task_type": "generate_path",
+                "content_type": "learning_path_v1",
+                "learning_path": {
+                    "goal": "掌握 Python 基础语法，能够编写简单的脚本程序",
+                    "nodes": [
+                        {
+                            "title": "安装 Python 和编辑器",
+                            "sort_no": 1,
+                            "node_code": "p1_t1",
+                            "node_type": "lesson",
+                            "description": "下载安装 Python 3.x 版本，选择并安装一个代码编辑器（如 VS Code）",
+                            "est_minutes": 30,
+                            "parent_node_code": null
+                        },
+                        {
+                            "title": "第一个 Python 程序",
+                            "sort_no": 2,
+                            "node_code": "p1_t2",
+                            "node_type": "practice",
+                            "description": "编写并运行 Hello World 程序，理解 Python 代码执行流程",
+                            "est_minutes": 20,
+                            "parent_node_code": "p1_t1"
+                        },
+                        {
+                            "title": "变量与数据类型",
+                            "sort_no": 3,
+                            "node_code": "p1_t3",
+                            "node_type": "lesson",
+                            "description": "学习整数、浮点数、字符串、布尔值等基本数据类型的使用",
+                            "est_minutes": 40,
+                            "parent_node_code": "p1_t2"
+                        },
+                        {
+                            "title": "基础运算符练习",
+                            "sort_no": 4,
+                            "node_code": "p1_t4",
+                            "node_type": "practice",
+                            "description": "练习算术、比较、逻辑运算符的使用，完成 5 个运算题",
+                            "est_minutes": 30,
+                            "parent_node_code": "p1_t3"
+                        },
+                        {
+                            "title": "基础语法小测验",
+                            "sort_no": 5,
+                            "node_code": "p1_ck",
+                            "node_type": "checkpoint",
+                            "description": "完成 10 道选择题，测试对变量、数据类型和运算符的理解",
+                            "est_minutes": 15,
+                            "parent_node_code": "p1_t4"
+                        },
+                        {
+                            "title": "if-else 条件语句",
+                            "sort_no": 6,
+                            "node_code": "p2_t1",
+                            "node_type": "lesson",
+                            "description": "学习 if、elif、else 语句，编写简单的条件判断程序",
+                            "est_minutes": 40,
+                            "parent_node_code": "p1_ck"
+                        },
+                        {
+                            "title": "for 和 while 循环",
+                            "sort_no": 7,
+                            "node_code": "p2_t2",
+                            "node_type": "practice",
+                            "description": "掌握 for 循环和 while 循环的使用场景，练习循环控制",
+                            "est_minutes": 50,
+                            "parent_node_code": "p2_t1"
+                        },
+                        {
+                            "title": "函数定义与调用",
+                            "sort_no": 8,
+                            "node_code": "p2_t3",
+                            "node_type": "lesson",
+                            "description": "学习如何定义函数、传递参数和返回值，理解函数的作用",
+                            "est_minutes": 45,
+                            "parent_node_code": "p2_t2"
+                        },
+                        {
+                            "title": "小型计算器项目",
+                            "sort_no": 9,
+                            "node_code": "p2_t4",
+                            "node_type": "practice",
+                            "description": "编写一个简单的计算器程序，包含加减乘除功能",
+                            "est_minutes": 60,
+                            "parent_node_code": "p2_t3"
+                        },
+                        {
+                            "title": "控制流编程挑战",
+                            "sort_no": 10,
+                            "node_code": "p2_ck",
+                            "node_type": "checkpoint",
+                            "description": "完成 3 个编程题，测试对条件、循环和函数的综合应用",
+                            "est_minutes": 15,
+                            "parent_node_code": "p2_t4"
+                        },
+                        {
+                            "title": "列表和元组",
+                            "sort_no": 11,
+                            "node_code": "p3_t1",
+                            "node_type": "lesson",
+                            "description": "学习列表的创建、访问、修改和常用方法，了解元组特性",
+                            "est_minutes": 40,
+                            "parent_node_code": "p2_ck"
+                        },
+                        {
+                            "title": "字典和集合",
+                            "sort_no": 12,
+                            "node_code": "p3_t2",
+                            "node_type": "practice",
+                            "description": "掌握字典的键值对操作，了解集合的基本用法",
+                            "est_minutes": 45,
+                            "parent_node_code": "p3_t1"
+                        },
+                        {
+                            "title": "文件读写操作",
+                            "sort_no": 13,
+                            "node_code": "p3_t3",
+                            "node_type": "lesson",
+                            "description": "学习使用 open() 函数读写文本文件，处理文件内容",
+                            "est_minutes": 35,
+                            "parent_node_code": "p3_t2"
+                        },
+                        {
+                            "title": "通讯录管理项目",
+                            "sort_no": 14,
+                            "node_code": "p3_t4",
+                            "node_type": "practice",
+                            "description": "创建一个简单的通讯录程序，能够添加、查询和保存联系人信息",
+                            "est_minutes": 75,
+                            "parent_node_code": "p3_t3"
+                        },
+                        {
+                            "title": "数据结构综合测试",
+                            "sort_no": 15,
+                            "node_code": "p3_ck",
+                            "node_type": "checkpoint",
+                            "description": "完成数据处理任务，测试对列表、字典和文件操作的综合能力",
+                            "est_minutes": 15,
+                            "parent_node_code": "p3_t4"
+                        },
+                        {
+                            "title": "简易待办事项应用",
+                            "sort_no": 16,
+                            "node_code": "p4_t1",
+                            "node_type": "practice",
+                            "description": "开发一个命令行待办事项应用，包含添加、删除、查看和保存功能",
+                            "est_minutes": 120,
+                            "parent_node_code": "p3_ck"
+                        },
+                        {
+                            "title": "代码调试与优化",
+                            "sort_no": 17,
+                            "node_code": "p4_t2",
+                            "node_type": "lesson",
+                            "description": "学习使用调试工具，优化项目代码，提高代码质量",
+                            "est_minutes": 30,
+                            "parent_node_code": "p4_t1"
+                        },
+                        {
+                            "title": "学习路径规划",
+                            "sort_no": 18,
+                            "node_code": "p4_t3",
+                            "node_type": "lesson",
+                            "description": "根据兴趣选择后续学习方向：Web 开发、数据分析或自动化脚本",
+                            "est_minutes": 30,
+                            "parent_node_code": "p4_t2"
+                        },
+                        {
+                            "title": "项目成果展示",
+                            "sort_no": 19,
+                            "node_code": "p4_ck",
+                            "node_type": "checkpoint",
+                            "description": "展示待办事项应用，自我评估学习成果，制定下一步计划",
+                            "est_minutes": 15,
+                            "parent_node_code": "p4_t3"
+                        }
+                    ],
+                    "title": "Python 编程基础入门"
+                }
+            },
+            "created_at": "2026-07-02T03:34:50",
+            "assets": []
+        }
+    }
+}
+
+提交问题（树节点）
+POST /api/v1/qa-nodes/question
+问题二（追问问题一）
+{
+    "conversation_id": 4,
+    "content_text": "如何安装 Python 和编辑器？",
+    "parent_node_id": 1,
+    "node_title": "Python 安装",
+    "request_id": "qa-root-002"
+}
+
+提交问题（树节点）
+POST /api/v1/qa-nodes/question
+问题三（追问问题一）
+{
+    "conversation_id": 4,
+    "content_text": "如何进行基础运算符练习？",
+    "parent_node_id": 1,
+    "node_title": "Python 练习",
+    "request_id": "qa-root-003"
+}
+
+
+查询会话整棵问答树
+GET /api/v1/qa-nodes/conversations/{conversation_id}/tree  conversation_id取4，取自上面建立会话的参数
+{
+    "code": 0,
+    "message": "ok",
+    "data": {
+        "conversation_id": 4,
+        "nodes": [
+            {
+                "node": {
+                    "id": 1,
+                    "user_id": 9,
+                    "conversation_id": 4,
+                    "parent_node_id": null,
+                    "root_node_id": 1,
+                    "depth": 0,
+                    "sort_no": 1,
+                    "title": "Python 入门",
+                    "question_text": "我想学习 Python，应该怎么入门？",
+                    "answer_text": "Python 编程基础入门",
+                    "summary_text": null,
+                    "key_points_json": null,
+                    "suggested_questions_json": null,
+                    "status": "done",
+                    "request_id": "qa-root-001",
+                    "question_message_id": 4,
+                    "answer_message_id": 5,
+                    "generation_task_id": 4,
+                    "meta_json": null,
+                    "created_at": "2026-07-02T03:33:34",
+                    "updated_at": "2026-07-02T03:34:50"
+                },
+                "children": [
+                    {
+                        "node": {
+                            "id": 2,
+                            "user_id": 9,
+                            "conversation_id": 4,
+                            "parent_node_id": 1,
+                            "root_node_id": 1,
+                            "depth": 1,
+                            "sort_no": 1,
+                            "title": "Python 安装",
+                            "question_text": "如何安装 Python 和编辑器？",
+                            "answer_text": "Python 环境搭建",
+                            "summary_text": null,
+                            "key_points_json": null,
+                            "suggested_questions_json": null,
+                            "status": "done",
+                            "request_id": "qa-root-002",
+                            "question_message_id": 6,
+                            "answer_message_id": 7,
+                            "generation_task_id": 5,
+                            "meta_json": null,
+                            "created_at": "2026-07-02T03:46:09",
+                            "updated_at": "2026-07-02T03:47:06"
+                        },
+                        "children": []
+                    },
+                    {
+                        "node": {
+                            "id": 3,
+                            "user_id": 9,
+                            "conversation_id": 4,
+                            "parent_node_id": 1,
+                            "root_node_id": 1,
+                            "depth": 1,
+                            "sort_no": 2,
+                            "title": "Python 练习",
+                            "question_text": "如何进行基础运算符练习？",
+                            "answer_text": "Python 基础运算符练习",
+                            "summary_text": null,
+                            "key_points_json": null,
+                            "suggested_questions_json": null,
+                            "status": "done",
+                            "request_id": "qa-root-003",
+                            "question_message_id": 8,
+                            "answer_message_id": 9,
+                            "generation_task_id": 6,
+                            "meta_json": null,
+                            "created_at": "2026-07-02T03:48:21",
+                            "updated_at": "2026-07-02T03:49:22"
+                        },
+                        "children": []
+                    }
+                ]
+            }
+        ]
+    }
+}
