@@ -192,11 +192,19 @@ object PlanApiService {
         token: String,
         pathId: Long,
         nodeId: Long,
-        newState: String
+        newState: String,
+        progressPercent: Int = if (newState == "done") 100 else 0
     ): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
-                val jsonBody = gson.toJson(mapOf("state" to newState))
+                val requestId = "node-state-${System.currentTimeMillis()}"
+                val jsonBody = gson.toJson(
+                    mapOf(
+                        "state" to newState,
+                        "progress_percent" to progressPercent,
+                        "request_id" to requestId
+                    )
+                )
                 val request = Request.Builder()
                     .url("$BASE_URL/api/v1/learning-paths/$pathId/nodes/$nodeId/state")
                     .patch(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
@@ -467,5 +475,99 @@ object PlanApiService {
     }
 
 
+    // ============================================================
+    // 学习路径详情 API（匹配实际响应格式）
+    // ============================================================
+
+    /**
+     * 获取学习路径详情（新版响应格式）
+     *
+     * GET /api/v1/learning-paths/{path_id}
+     *
+     * 响应 data 格式：{ path: LearningPathOut, nodes: [LearningNodeOut] }
+     * 每个节点中包含 user_state 字段表示用户当前进度状态。
+     */
+    suspend fun getLearningPathDetailV2(
+        token: String,
+        pathId: Long
+    ): Result<LearningPathDetailData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("$BASE_URL/api/v1/learning-paths/$pathId")
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("HTTP ${response.code}: $responseBody")
+                    )
+                }
+
+                val type = object : TypeToken<ApiResponse<LearningPathDetailData>>() {}.type
+                val apiResponse: ApiResponse<LearningPathDetailData> =
+                    gson.fromJson(responseBody, type)
+
+                if (apiResponse.code != 0) {
+                    return@withContext Result.failure(Exception(apiResponse.message))
+                }
+
+                Result.success(
+                    apiResponse.data ?: throw Exception("学习路径详情数据为空")
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * 获取当前学习路径（新版响应格式）
+     *
+     * GET /api/v1/learning-paths/conversations/{conversation_id}/current
+     *
+     * 响应 data 格式：{ path: LearningPathOut, nodes: [LearningNodeOut] }
+     */
+    suspend fun getCurrentLearningPathV2(
+        token: String,
+        conversationId: Long
+    ): Result<LearningPathDetailData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val request = Request.Builder()
+                    .url("$BASE_URL/api/v1/learning-paths/conversations/$conversationId/current")
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("HTTP ${response.code}: $responseBody")
+                    )
+                }
+
+                val type = object : TypeToken<ApiResponse<LearningPathDetailData>>() {}.type
+                val apiResponse: ApiResponse<LearningPathDetailData> =
+                    gson.fromJson(responseBody, type)
+
+                if (apiResponse.code != 0) {
+                    return@withContext Result.failure(Exception(apiResponse.message))
+                }
+
+                Result.success(
+                    apiResponse.data ?: throw Exception("当前学习路径数据为空")
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
 
 }

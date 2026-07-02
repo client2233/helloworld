@@ -155,7 +155,8 @@ fun CreatePlanScreen(
             title = title,
             latestDate = now,
             createdDate = now,
-            colorIndex = (conversationId?.toInt() ?: 0) % 5
+            colorIndex = (conversationId?.toInt() ?: 0) % 5,
+            conversationId = conversationId
         )
         PlanLocalStorage.savePlan(plan)
     }

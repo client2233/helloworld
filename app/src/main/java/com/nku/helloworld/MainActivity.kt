@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.nku.helloworld.auth.SessionManager
+import com.nku.helloworld.ui.plan.PlanDetailActivity
 import com.nku.helloworld.ui.plan.PlanScreen
 import com.nku.helloworld.ui.home.HomeScreen
 import com.nku.helloworld.ui.profile.ProfileApp
@@ -96,7 +97,18 @@ fun MainApp() {
         Box(modifier = Modifier.padding(innerPadding)) {
             when (selectedTab) {
                 "home" -> HomeScreen()
-                "dashboard" -> PlanScreen()
+                "dashboard" -> PlanScreen(
+                    onPlanClick = { plan ->
+                        // 旧版本地保存的计划 conversationId 可能为 null，用 id 作为回退
+                        val convId = plan.conversationId ?: if (plan.id > 0) plan.id else null
+                        val intent = android.content.Intent(context, PlanDetailActivity::class.java).apply {
+                            convId?.let { putExtra(PlanDetailActivity.EXTRA_CONVERSATION_ID, it) }
+                            plan.pathId?.let { putExtra(PlanDetailActivity.EXTRA_PATH_ID, it) }
+                            putExtra(PlanDetailActivity.EXTRA_PLAN_TITLE, plan.title)
+                        }
+                        context.startActivity(intent)
+                    }
+                )
                 "stats" -> StatsScreen()
                 "profile" -> ProfileApp()
             }

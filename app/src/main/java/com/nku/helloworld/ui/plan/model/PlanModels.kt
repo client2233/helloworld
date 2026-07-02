@@ -1,5 +1,7 @@
 package com.nku.helloworld.ui.plan.model
 
+import com.google.gson.annotations.SerializedName
+
 /**
  * 学习计划卡片数据模型
  */
@@ -59,6 +61,100 @@ data class LearningProgress(
     val completedNodes: Int = 0,
     val completionRate: Float = 0f,
     val checkinDays: Int = 0
+)
+
+
+// ============================================================
+// 学习路径 API 响应模型（匹配实际后端返回）
+// ============================================================
+
+/**
+ * 学习路径详情 API 响应 data
+ */
+data class LearningPathDetailData(
+    val path: LearningPathOut,
+    val nodes: List<LearningNodeOut>
+)
+
+/**
+ * 学习路径输出（来自 /api/v1/learning-paths/{path_id} 的 path 字段）
+ *
+ * 字段使用 snake_case 以匹配后端 JSON 响应。
+ */
+data class LearningPathOut(
+    val id: Long? = null,
+    @SerializedName("user_id")
+    val userId: Long? = null,
+    @SerializedName("conversation_id")
+    val conversationId: Long? = null,
+    @SerializedName("source_task_id")
+    val sourceTaskId: Long? = null,
+    @SerializedName("source_message_id")
+    val sourceMessageId: Long? = null,
+    @SerializedName("version_no")
+    val versionNo: Long? = null,
+    val title: String? = null,
+    val goal: String? = null,
+    @SerializedName("summary_json")
+    val summaryJson: Map<String, Any?>? = null,
+    val status: String? = null,
+    @SerializedName("created_at")
+    val createdAt: String? = null,
+    @SerializedName("updated_at")
+    val updatedAt: String? = null
+)
+
+/**
+ * 学习路径节点输出（来自 /api/v1/learning-paths/{path_id} 的 nodes 数组）
+ */
+data class LearningNodeOut(
+    val id: Long? = null,
+    @SerializedName("path_id")
+    val pathId: Long? = null,
+    @SerializedName("node_code")
+    val nodeCode: String? = null,
+    @SerializedName("parent_node_id")
+    val parentNodeId: Long? = null,
+    val title: String? = null,
+    @SerializedName("node_type")
+    val nodeType: String? = null,
+    val description: String? = null,
+    @SerializedName("est_minutes")
+    val estMinutes: Long? = null,
+    @SerializedName("sort_no")
+    val sortNo: Long? = null,
+    @SerializedName("unlock_rule_json")
+    val unlockRuleJson: Map<String, Any?>? = null,
+    @SerializedName("content_json")
+    val contentJson: Map<String, Any?>? = null,
+    @SerializedName("created_at")
+    val createdAt: String? = null,
+    @SerializedName("updated_at")
+    val updatedAt: String? = null,
+    @SerializedName("user_state")
+    val userState: LearningNodeStateOut? = null
+)
+
+/**
+ * 学习节点用户状态
+ */
+data class LearningNodeStateOut(
+    val id: Long? = null,
+    @SerializedName("user_id")
+    val userId: Long? = null,
+    @SerializedName("path_id")
+    val pathId: Long? = null,
+    @SerializedName("node_id")
+    val nodeId: Long? = null,
+    val state: String? = null,  // locked | available | in_progress | done
+    @SerializedName("progress_percent")
+    val progressPercent: Long? = null,
+    @SerializedName("started_at")
+    val startedAt: String? = null,
+    @SerializedName("completed_at")
+    val completedAt: String? = null,
+    @SerializedName("updated_at")
+    val updatedAt: String? = null
 )
 
 

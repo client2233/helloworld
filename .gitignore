@@ -29,4 +29,5 @@ captures/
 # Logs
 *.log
 
-api.md
+services.md
+api.txt
