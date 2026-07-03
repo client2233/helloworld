@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -28,6 +29,9 @@ import com.nku.helloworld.auth.SessionManager
 import com.nku.helloworld.ui.plan.api.PlanApiService
 import com.nku.helloworld.ui.plan.model.*
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 学习路径详情页
@@ -78,6 +82,7 @@ fun PlanDetailScreen(
     onBack: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // ── 状态 ──
     var learningPath by remember { mutableStateOf<LearningPath?>(null) }
@@ -153,7 +158,7 @@ fun PlanDetailScreen(
         val token = SessionManager.getAccessToken() ?: return
         val pid = currentPathId ?: return
 
-        // 乐观更新 UI
+        // 乐观更新当前节点 UI
         nodeStates = nodeStates + (nodeId to newState)
 
         coroutineScope.launch {
@@ -164,9 +169,54 @@ fun PlanDetailScreen(
                     nodeId = nodeId,
                     newState = newState
                 )
+                // API 调用成功 → 更新本地计划的最近学习时间
+                if (newState == "done") {
+                    if (!PlanLocalStorage.isInitialized()) {
+                        PlanLocalStorage.init(context.applicationContext as android.app.Application)
+                    }
+                    val plans = PlanLocalStorage.loadAllPlans().toMutableList()
+                    val planIndex = plans.indexOfFirst {
+                        (conversationId != null && (it.conversationId == conversationId || it.id == conversationId)) ||
+                        (pathId != null && it.pathId == pathId)
+                    }
+                    if (planIndex >= 0) {
+                        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                        plans[planIndex] = plans[planIndex].copy(latestDate = todayStr)
+                        PlanLocalStorage.savePlan(plans[planIndex])
+                    }
+                }
             } catch (e: Exception) {
                 // 失败时回滚
                 nodeStates = nodeStates + (nodeId to (learningPath?.nodes?.find { it.id == nodeId }?.status ?: "locked"))
+            }
+        }
+
+        // 如果标记为完成，自动解锁下一个节点
+        if (newState == "done") {
+            val nodes = learningPath?.nodes ?: return
+            val currentIndex = nodes.indexOfFirst { it.id == nodeId }
+            if (currentIndex >= 0 && currentIndex + 1 < nodes.size) {
+                val nextNode = nodes[currentIndex + 1]
+                val nextNodeCurrentState = nodeStates[nextNode.id] ?: nextNode.status
+                if (nextNodeCurrentState == "locked") {
+                    // 乐观更新下一个节点为 available
+                    nodeStates = nodeStates + (nextNode.id to "available")
+
+                    // 同步调用 API 更新服务器状态
+                    coroutineScope.launch {
+                        try {
+                            PlanApiService.updateNodeState(
+                                token = token,
+                                pathId = pid,
+                                nodeId = nextNode.id,
+                                newState = "available"
+                            )
+                        } catch (e: Exception) {
+                            // 失败时回滚下一个节点的状态
+                            nodeStates = nodeStates + (nextNode.id to "locked")
+                        }
+                    }
+                }
             }
         }
     }

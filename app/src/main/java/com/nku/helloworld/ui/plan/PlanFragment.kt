@@ -1,5 +1,6 @@
 package com.nku.helloworld.ui.plan
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -21,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.collect
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.colorResource
@@ -38,6 +40,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.nku.helloworld.R
+import com.nku.helloworld.ui.plan.CreatePlanActivity
 import com.nku.helloworld.ui.plan.model.PlanItem
 
 /**
@@ -141,9 +144,12 @@ fun PlanScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             // ── 1. 顶部导航栏 ──
+            val planContext = LocalContext.current
             PlanTopBar(
-                onRefresh = { viewModel.refresh() },
-                isLoading = uiState.isLoading
+                onCreatePlan = {
+                    val intent = Intent(planContext, CreatePlanActivity::class.java)
+                    planContext.startActivity(intent)
+                }
             )
 
             // ── 2. 内容区域 ──
@@ -279,7 +285,7 @@ fun EmptyPlanState(
 
 @Composable
 fun PlanTopBar(
-    onRefresh: () -> Unit = {},
+    onCreatePlan: () -> Unit = {},
     isLoading: Boolean = false
 ) {
     Surface(
@@ -293,18 +299,8 @@ fun PlanTopBar(
                 .padding(horizontal = 4.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 返回按钮（左侧，预留）
-            IconButton(
-                onClick = { },
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_auth_back),
-                    contentDescription = stringResource(R.string.plan_back),
-                    tint = colorResource(R.color.text_primary),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+            // 左侧占位（对称布局）
+            Spacer(modifier = Modifier.size(48.dp))
 
             // 页面标题（居中）
             Text(
@@ -316,26 +312,17 @@ fun PlanTopBar(
                 modifier = Modifier.weight(1f)
             )
 
-            // 右侧刷新按钮
+            // 右侧新建计划按钮
             IconButton(
-                onClick = onRefresh,
-                modifier = Modifier.size(48.dp),
-                enabled = !isLoading
+                onClick = onCreatePlan,
+                modifier = Modifier.size(48.dp)
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
-                        color = colorResource(R.color.brand_primary),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_edit),
-                        contentDescription = "刷新",
-                        tint = colorResource(R.color.text_secondary),
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_edit),
+                    contentDescription = "新建计划",
+                    tint = colorResource(R.color.brand_primary),
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }

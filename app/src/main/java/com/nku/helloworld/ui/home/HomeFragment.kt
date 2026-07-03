@@ -27,8 +27,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import com.nku.helloworld.ui.plan.CreatePlanActivity
+import com.nku.helloworld.ui.plan.PlanDetailActivity
+import com.nku.helloworld.ui.plan.PlanLocalStorage
+import com.nku.helloworld.ui.plan.model.PlanItem
 import com.nku.helloworld.auth.SessionManager
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -96,8 +102,39 @@ fun HomeScreen() {
         )
     )
 
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var aiResultText by remember { mutableStateOf("学习计划内容区域（预留）") }
+    var latestPlan by remember { mutableStateOf<PlanItem?>(null) }
+    var aiResultText by remember { mutableStateOf("") }
+
+    // 加载最近一次学习过的计划
+    fun loadLatestPlan() {
+        if (!PlanLocalStorage.isInitialized()) {
+            PlanLocalStorage.init(context.applicationContext as android.app.Application)
+        }
+        val plans = PlanLocalStorage.loadAllPlans()
+        latestPlan = plans
+            .filter { !it.latestDate.isNullOrBlank() }
+            .maxByOrNull { it.latestDate ?: "" }
+            ?: plans.firstOrNull()
+    }
+
+    // 页面恢复时重新加载
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                loadLatestPlan()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 首次加载
+    LaunchedEffect(Unit) {
+        loadLatestPlan()
+    }
 
     fun sendAiRequest(query: String) {
         if (query.isEmpty()) return
@@ -188,7 +225,7 @@ fun HomeScreen() {
                 )
             },
             sheetContent = {
-                HomeSheetContent(items, aiResultText)
+                HomeSheetContent(items = items, aiResultText = aiResultText, latestPlan = latestPlan)
             }
         ) { innerPadding ->
             // Background area under the top bar
@@ -318,7 +355,11 @@ fun HomeTopBar(
 }
 
 @Composable
-fun HomeSheetContent(items: List<HomeRecentItem>, aiResultText: String) {
+fun HomeSheetContent(
+    items: List<HomeRecentItem>,
+    aiResultText: String,
+    latestPlan: PlanItem? = null
+) {
     val context = LocalContext.current
     LazyColumn(
         modifier = Modifier
@@ -376,27 +417,102 @@ fun HomeSheetContent(items: List<HomeRecentItem>, aiResultText: String) {
                 }
             }
 
-            // AI Preview Card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 180.dp)
-                    .padding(top = 24.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = colorResource(R.color.app_bg)),
-                border = BorderStroke(1.dp, colorResource(R.color.divider_soft))
-            ) {
-                Box(
+            // 最近学习计划卡片（替换预留区域）
+            if (latestPlan != null) {
+                val plan = latestPlan!!
+                Card(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(top = 24.dp)
+                        .clickable {
+                            val convId = plan.conversationId ?: if (plan.id > 0) plan.id else null
+                            val intent = android.content.Intent(context, PlanDetailActivity::class.java).apply {
+                                convId?.let { putExtra(PlanDetailActivity.EXTRA_CONVERSATION_ID, it) }
+                                plan.pathId?.let { putExtra(PlanDetailActivity.EXTRA_PATH_ID, it) }
+                                putExtra(PlanDetailActivity.EXTRA_PLAN_TITLE, plan.title)
+                            }
+                            context.startActivity(intent)
+                        },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = colorResource(R.color.surface_white)),
+                    border = BorderStroke(1.dp, colorResource(R.color.divider_soft))
                 ) {
-                    Text(
-                        text = aiResultText,
-                        color = colorResource(R.color.text_primary),
-                        fontSize = 14.sp
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // 左侧彩色圆点
+                        val macaronColors = listOf(
+                            Color(0xFF6B9CE4),
+                            Color(0xFF5BC0A0),
+                            Color(0xFFF4A261),
+                            Color(0xFFB583E4),
+                            Color(0xFFE483B5)
+                        )
+                        val dotColor = macaronColors[plan.colorIndex % macaronColors.size]
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .clip(CircleShape)
+                                .background(dotColor)
+                        )
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // 中间文字
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = plan.title,
+                                color = colorResource(R.color.text_primary),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            if (!plan.latestDate.isNullOrBlank()) {
+                                Text(
+                                    text = "最近学习: ${plan.latestDate}",
+                                    color = colorResource(R.color.text_secondary),
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+
+                        // 右侧箭头
+                        Text(
+                            text = "›",
+                            color = colorResource(R.color.text_muted),
+                            fontSize = 20.sp
+                        )
+                    }
+                }
+            } else {
+                // 无计划时显示预留占位
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 100.dp)
+                        .padding(top = 24.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = colorResource(R.color.app_bg)),
+                    border = BorderStroke(1.dp, colorResource(R.color.divider_soft))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "暂无学习计划\n点击上方「专注」开始创建",
+                            color = colorResource(R.color.text_muted),
+                            fontSize = 14.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
                 }
             }
 

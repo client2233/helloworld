@@ -45,7 +45,7 @@ object PlanLocalStorage {
         // 限制数量
         val trimmed = plans.take(MAX_LOCAL_PLANS)
         val json = gson.toJson(trimmed)
-        prefs.edit().putString(KEY_PLANS, json).apply()
+        prefs.edit().putString(KEY_PLANS, json).commit()
     }
 
     /**
@@ -65,7 +65,7 @@ object PlanLocalStorage {
      * 清除所有本地计划
      */
     fun clearAll() {
-        prefs.edit().remove(KEY_PLANS).apply()
+        prefs.edit().remove(KEY_PLANS).commit()
     }
 
     /**
