@@ -16,6 +16,7 @@ object PlanLocalStorage {
 
     private const val PREFS_NAME = "helloworld_local_plans"
     private const val KEY_PLANS = "saved_plans"
+    private const val KEY_COMPLETED_NODES_PREFIX = "completed_nodes_"
     private const val MAX_LOCAL_PLANS = 20
 
     private lateinit var prefs: SharedPreferences
@@ -66,6 +67,23 @@ object PlanLocalStorage {
      */
     fun clearAll() {
         prefs.edit().remove(KEY_PLANS).commit()
+    }
+
+    /**
+     * 保存已完成节点 ID（按会话 ID 分组）
+     */
+    fun saveCompletedNodes(conversationId: Long, nodeIds: Set<Long>) {
+        val key = KEY_COMPLETED_NODES_PREFIX + conversationId
+        prefs.edit().putString(key, nodeIds.joinToString(",")).commit()
+    }
+
+    /**
+     * 加载已完成节点 ID
+     */
+    fun loadCompletedNodes(conversationId: Long): Set<Long> {
+        val key = KEY_COMPLETED_NODES_PREFIX + conversationId
+        val raw = prefs.getString(key, null) ?: return emptySet()
+        return raw.split(",").mapNotNull { it.toLongOrNull() }.toSet()
     }
 
     /**

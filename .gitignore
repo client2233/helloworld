@@ -29,5 +29,6 @@ captures/
 # Logs
 *.log
 
-services.md
+service.md
 api.txt
+Tree.txt

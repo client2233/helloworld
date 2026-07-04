@@ -3,6 +3,7 @@ package com.nku.helloworld.ui.plan.api
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.nku.helloworld.AppConfig
+import com.nku.helloworld.HelloworldApp
 import com.nku.helloworld.auth.model.ApiResponse
 import com.nku.helloworld.ui.plan.model.*
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.MediaType.Companion.toMediaType
+import android.util.Log
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -40,6 +42,15 @@ object PlanApiService {
 
     private val gson = Gson()
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    /** Debug: 写入日志文件（绕过荣耀设备 logcat 限制） */
+    private fun apiLog(tag: String, msg: String) {
+        Log.e(tag, msg)
+        try {
+            val file = java.io.File(HelloworldApp.instance.filesDir, "qatree_debug.log")
+            file.appendText("${java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date())} [$tag] $msg\n")
+        } catch (_: Exception) {}
+    }
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -563,6 +574,132 @@ object PlanApiService {
 
                 Result.success(
                     apiResponse.data ?: throw Exception("当前学习路径数据为空")
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    // ============================================================
+    // QA 树节点 API（来自 api.txt 的 qa-nodes 接口）
+    // ============================================================
+
+    /**
+     * 获取会话的整棵问答树
+     *
+     * GET /api/v1/qa-nodes/conversations/{conversation_id}/tree
+     *
+     * 返回整个 QA 树结构，包含节点嵌套的 children 数组。
+     * 可用于在主页画布上展示问答之间的关系树。
+     */
+    suspend fun getQaTree(
+        token: String,
+        conversationId: Long
+    ): Result<QaTreeData> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val okRequest = Request.Builder()
+                    .url("$BASE_URL/api/v1/qa-nodes/conversations/$conversationId/tree")
+                    .get()
+                    .header("Authorization", "Bearer $token")
+                    .build()
+
+                val response = client.newCall(okRequest).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                // ── Debug: 打印原始 JSON（文件 + Logcat） ──
+                apiLog("QaTree", "========== QA 树原始 JSON ==========")
+                apiLog("QaTree", responseBody)
+                apiLog("QaTree", "=====================================")
+
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("HTTP ${response.code}: $responseBody")
+                    )
+                }
+
+                val type = object : TypeToken<ApiResponse<QaTreeData>>() {}.type
+                val apiResponse: ApiResponse<QaTreeData> =
+                    gson.fromJson(responseBody, type)
+
+                if (apiResponse.code != 0) {
+                    return@withContext Result.failure(Exception(apiResponse.message))
+                }
+
+                val data = apiResponse.data ?: throw Exception("QA 树数据为空")
+
+                // ── Debug: 格式化打印树结构 ──
+                apiLog("QaTree", "========== 树形结构 ==========")
+                fun dumpTree(nodes: List<QaTreeNode>?, indent: String) {
+                    nodes?.forEachIndexed { i, tn ->
+                        val n = tn.node
+                        val connector = if (i == nodes.lastIndex) "└── " else "├── "
+                        val status = n?.status ?: "?"
+                        val title = n?.title ?: "?"
+                        val id = n?.id ?: 0L
+                        val d = n?.depth ?: 0
+                        val type = n?.nodeType ?: ""
+                        val mins = n?.estMinutes ?: 0
+                        val extra = if (type.isNotBlank()) " [$type ${mins}min]" else ""
+                        apiLog("QaTree", "$indent$connector[$status] #$id $title (depth=$d)$extra")
+                        tn.children?.let { dumpTree(it, indent + if (i == nodes.lastIndex) "    " else "│   ") }
+                    }
+                }
+                dumpTree(data.nodes, "")
+                var total = 0
+                fun count(ns: List<QaTreeNode>?) { ns?.forEach { total++; count(it.children) } }
+                count(data.nodes)
+                apiLog("QaTree", "节点总数: $total")
+                apiLog("QaTree", "================================")
+
+                Result.success(data)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * 提交 QA 树节点问题
+     *
+     * POST /api/v1/qa-nodes/question
+     *
+     * 用于在问答树中提交问题，支持 parent_node_id 建立父子关系。
+     * 响应 data 格式：{ node: QaNodeData, generation_task_id: Long }
+     */
+    suspend fun submitQaNodeQuestion(
+        token: String,
+        req: QaNodeQuestionRequest
+    ): Result<QaNodeQuestionResponse> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val jsonBody = gson.toJson(req)
+                val okRequest = Request.Builder()
+                    .url("$BASE_URL/api/v1/qa-nodes/question")
+                    .post(jsonBody.toRequestBody(JSON_MEDIA_TYPE))
+                    .header("Authorization", "Bearer $token")
+                    .build()
+
+                val response = client.newCall(okRequest).execute()
+                val responseBody = response.body?.string() ?: ""
+
+                if (!response.isSuccessful) {
+                    return@withContext Result.failure(
+                        IOException("HTTP ${response.code}: $responseBody")
+                    )
+                }
+
+                val type = object : TypeToken<ApiResponse<QaNodeQuestionResponse>>() {}.type
+                val apiResponse: ApiResponse<QaNodeQuestionResponse> =
+                    gson.fromJson(responseBody, type)
+
+                if (apiResponse.code != 0) {
+                    return@withContext Result.failure(Exception(apiResponse.message))
+                }
+
+                Result.success(
+                    apiResponse.data ?: throw Exception("提交问题返回数据为空")
                 )
             } catch (e: Exception) {
                 Result.failure(e)

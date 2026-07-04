@@ -8,9 +8,14 @@ import android.app.Application
  */
 class HelloworldApp : Application() {
 
+    companion object {
+        lateinit var instance: HelloworldApp
+            private set
+    }
+
     override fun onCreate() {
         super.onCreate()
-        // 初始化应用配置（从 assets/config.properties 加载）
+        instance = this
         AppConfig.init(this)
     }
 }

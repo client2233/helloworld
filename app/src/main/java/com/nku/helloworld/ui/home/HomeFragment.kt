@@ -34,8 +34,12 @@ import coil.compose.AsyncImage
 import com.nku.helloworld.ui.plan.CreatePlanActivity
 import com.nku.helloworld.ui.plan.PlanDetailActivity
 import com.nku.helloworld.ui.plan.PlanLocalStorage
+import com.nku.helloworld.ui.plan.api.PlanApiService
+import com.nku.helloworld.ui.plan.model.LearningNodeOut
 import com.nku.helloworld.ui.plan.model.PlanItem
 import com.nku.helloworld.auth.SessionManager
+import com.nku.helloworld.ui.mindmap.MindMapCanvas
+import com.nku.helloworld.ui.mindmap.PlanSelector
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -47,6 +51,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.Fragment
 import com.nku.helloworld.R
+import com.nku.helloworld.ui.plan.model.QaTreeData
+import com.nku.helloworld.ui.plan.model.QaTreeNode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -57,13 +63,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
-
-data class HomeRecentItem(
-    val title: String,
-    val category: String,
-    val time: String,
-    val colorRes: Int,
-)
 
 class HomeFragment : Fragment() {
     override fun onCreateView(
@@ -82,12 +81,6 @@ class HomeFragment : Fragment() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen() {
-    val items = listOf(
-        HomeRecentItem("英语单词打卡", stringResource(R.string.home_category_study), "07:30", R.color.status_todo),
-        HomeRecentItem("晚间复盘打卡", stringResource(R.string.home_category_study), "21:30", R.color.status_pending),
-        HomeRecentItem("晨读完成记录", stringResource(R.string.home_category_study), "06:40", R.color.status_done),
-    )
-
     // 获取登录用户信息
     val userProfile = SessionManager.getUserProfile()
     val displayName = userProfile.displayName.ifEmpty {
@@ -107,7 +100,145 @@ fun HomeScreen() {
     var latestPlan by remember { mutableStateOf<PlanItem?>(null) }
     var aiResultText by remember { mutableStateOf("") }
 
-    // 加载最近一次学习过的计划
+    // === 学习计划与思维导图相关状态 ===
+    var allPlans by remember { mutableStateOf<List<PlanItem>>(emptyList()) }
+    var selectedPlanId by remember { mutableStateOf<Long?>(null) }
+
+    // QA 树数据（唯一数据源）
+    var qaTreeData by remember { mutableStateOf<QaTreeData?>(null) }
+    var qaFlatNodes by remember { mutableStateOf<List<LearningNodeOut>>(emptyList()) }
+    var isLoadingNodes by remember { mutableStateOf(false) }
+    var nodeError by remember { mutableStateOf<String?>(null) }
+
+    var refreshTrigger by remember { mutableStateOf(0) }
+
+    // 加载所有学习计划
+    fun loadPlans() {
+        if (!PlanLocalStorage.isInitialized()) {
+            PlanLocalStorage.init(context.applicationContext as android.app.Application)
+        }
+        val plans = PlanLocalStorage.loadAllPlans()
+        allPlans = plans
+        if (plans.isNotEmpty()) {
+            val latest = plans
+                .filter { !it.latestDate.isNullOrBlank() }
+                .maxByOrNull { it.latestDate ?: "" }
+            if (selectedPlanId == null || plans.none { it.id == selectedPlanId }) {
+                selectedPlanId = (latest ?: plans.first()).id
+            }
+            latestPlan = latest ?: plans.first()
+        } else {
+            latestPlan = null
+        }
+    }
+
+    // 从 API 获取学习路径节点
+    // 将 QA 树递归展平为 LearningNodeOut 列表（跳过用户追问节点，保留类型、时间、状态）
+    fun flattenQaTree(nodes: List<QaTreeNode>?, parentId: Long? = null): List<LearningNodeOut> {
+        if (nodes == null) return emptyList()
+        val result = mutableListOf<LearningNodeOut>()
+        var sortNo = 0L
+        for (qaNode in nodes) {
+            val nd = qaNode.node ?: continue
+            val id = nd.id ?: continue
+            val status = nd.status ?: "locked"
+            val nType = nd.nodeType
+            val children = qaNode.children
+
+            // 是否可显示：planned 或有 node_type 的 done 节点
+            val displayable = status == "planned" || (status == "done" && !nType.isNullOrBlank())
+
+            if (displayable) {
+                sortNo++
+                val flatNode = LearningNodeOut(
+                    id = id,
+                    parentNodeId = parentId,
+                    title = nd.title ?: nd.questionText?.take(30) ?: "节点",
+                    nodeType = nType?.takeIf { it.isNotBlank() },
+                    description = nd.description ?: nd.questionText?.take(100),
+                    sortNo = sortNo,
+                    estMinutes = nd.estMinutes?.toLong(),
+                    userState = com.nku.helloworld.ui.plan.model.LearningNodeStateOut(
+                        nodeId = id,
+                        state = when (status) {
+                            "done" -> "done"
+                            "planned" -> "available"
+                            else -> "locked"
+                        }
+                    )
+                )
+                result.add(flatNode)
+                // 递归子节点，以当前节点为父
+                if (!children.isNullOrEmpty()) {
+                    result.addAll(flattenQaTree(children, id))
+                }
+            } else {
+                // 不可见节点（用户追问）：穿透，子节点继承当前 parentId
+                if (!children.isNullOrEmpty()) {
+                    result.addAll(flattenQaTree(children, parentId))
+                }
+            }
+        }
+        return result
+    }
+
+    // 从 API 获取 QA 树（唯一画布数据源）
+    suspend fun fetchQaTree(plan: PlanItem) {
+        val conversationId = plan.conversationId ?: if (plan.id > 0) plan.id else null
+        if (conversationId == null) {
+            qaTreeData = null
+            qaFlatNodes = emptyList()
+            isLoadingNodes = false
+            nodeError = "该计划没有关联会话"
+            return
+        }
+
+        isLoadingNodes = true
+        nodeError = null
+
+        try {
+            val token = SessionManager.getAccessToken() ?: ""
+            if (token.isEmpty()) {
+                isLoadingNodes = false
+                nodeError = "请先登录"
+                return
+            }
+
+            val result = PlanApiService.getQaTree(token, conversationId)
+            result.fold(
+                onSuccess = { treeData ->
+                    qaTreeData = treeData
+                    qaFlatNodes = flattenQaTree(treeData.nodes)
+                    // 合并本地已保存的完成状态
+                    val savedCompleted = PlanLocalStorage.loadCompletedNodes(conversationId)
+                    if (savedCompleted.isNotEmpty()) {
+                        qaFlatNodes = qaFlatNodes.map { node ->
+                            if (node.id != null && node.id in savedCompleted) {
+                                node.copy(userState = com.nku.helloworld.ui.plan.model.LearningNodeStateOut(
+                                    nodeId = node.id, state = "done"
+                                ))
+                            } else node
+                        }
+                    }
+                    isLoadingNodes = false
+                    nodeError = null
+                },
+                onFailure = { err ->
+                    qaTreeData = null
+                    qaFlatNodes = emptyList()
+                    isLoadingNodes = false
+                    nodeError = "获取节点失败: ${err.message}"
+                }
+            )
+        } catch (e: Exception) {
+            qaTreeData = null
+            qaFlatNodes = emptyList()
+            isLoadingNodes = false
+            nodeError = "网络错误: ${e.message}"
+        }
+    }
+
+    // 加载最近一次学习过的计划（保留原逻辑）
     fun loadLatestPlan() {
         if (!PlanLocalStorage.isInitialized()) {
             PlanLocalStorage.init(context.applicationContext as android.app.Application)
@@ -125,6 +256,8 @@ fun HomeScreen() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 loadLatestPlan()
+                loadPlans()
+                refreshTrigger++
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -134,6 +267,14 @@ fun HomeScreen() {
     // 首次加载
     LaunchedEffect(Unit) {
         loadLatestPlan()
+        loadPlans()
+    }
+
+    // 当选中的计划变化时获取 QA 树数据
+    LaunchedEffect(selectedPlanId, refreshTrigger) {
+        val planId = selectedPlanId ?: return@LaunchedEffect
+        val plan = allPlans.find { it.id == planId } ?: return@LaunchedEffect
+        fetchQaTree(plan)
     }
 
     fun sendAiRequest(query: String) {
@@ -225,7 +366,7 @@ fun HomeScreen() {
                 )
             },
             sheetContent = {
-                HomeSheetContent(items = items, aiResultText = aiResultText, latestPlan = latestPlan)
+                HomeSheetContent(aiResultText = aiResultText, latestPlan = latestPlan, allPlans = allPlans)
             }
         ) { innerPadding ->
             // Background area under the top bar
@@ -235,15 +376,84 @@ fun HomeScreen() {
                     .background(colorResource(R.color.app_bg))
                     .padding(innerPadding)
             ) {
-                Text(
-                    text = stringResource(R.string.home_background_slogan),
-                    color = colorResource(R.color.text_secondary),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 24.dp)
-                )
+                if (allPlans.isNotEmpty() && selectedPlanId != null) {
+                    // 视图模式切换按钮（右上角）—— 已移除，统一使用 QA 树
+
+                    // 思维导图画布
+                    MindMapCanvas(
+                        plans = allPlans,
+                        selectedPlanId = selectedPlanId!!,
+                        learningNodes = qaFlatNodes,
+                        isQaMode = true,
+                        onSelectPlan = { id ->
+                            selectedPlanId = id
+                            latestPlan = allPlans.find { it.id == id }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+
+                    // 加载指示器
+                    if (isLoadingNodes) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.8f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(28.dp),
+                                color = colorResource(R.color.brand_primary),
+                                strokeWidth = 3.dp
+                            )
+                        }
+                    }
+
+                    // 错误提示
+                    if (nodeError != null && !isLoadingNodes && qaFlatNodes.isEmpty()) {
+                        val errMsg = nodeError
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(top = 80.dp)
+                        ) {
+                            Text(
+                                text = errMsg ?: "",
+                                color = colorResource(R.color.brand_red),
+                                fontSize = 12.sp,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    }
+
+                    // 顶部计划选择器
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 12.dp)
+                            .fillMaxWidth()
+                    ) {
+                        PlanSelector(
+                            plans = allPlans,
+                            selectedPlanId = selectedPlanId!!,
+                            onSelectPlan = { id ->
+                                selectedPlanId = id
+                                latestPlan = allPlans.find { it.id == id }
+                            }
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "\uD83D\uDCD6 暂无学习计划\n下滑打开底部面板创建吧",
+                        color = colorResource(R.color.text_muted),
+                        fontSize = 16.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 24.sp,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                    )
+                }
             }
         }
     }
@@ -356,9 +566,9 @@ fun HomeTopBar(
 
 @Composable
 fun HomeSheetContent(
-    items: List<HomeRecentItem>,
     aiResultText: String,
-    latestPlan: PlanItem? = null
+    latestPlan: PlanItem? = null,
+    allPlans: List<PlanItem> = emptyList()
 ) {
     val context = LocalContext.current
     LazyColumn(
@@ -394,7 +604,7 @@ fun HomeSheetContent(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(text = stringResource(R.string.home_focus_title), color = colorResource(R.color.text_secondary), fontSize = 13.sp)
-                        Text(text = stringResource(R.string.home_focus_value), color = colorResource(R.color.brand_primary), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        Text(text = "${allPlans.size} 项", color = colorResource(R.color.brand_primary), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                         Text(text = stringResource(R.string.home_focus_desc), color = colorResource(R.color.text_secondary), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
@@ -411,7 +621,7 @@ fun HomeSheetContent(
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(text = stringResource(R.string.home_done_title), color = colorResource(R.color.text_secondary), fontSize = 13.sp)
-                        Text(text = stringResource(R.string.home_done_value), color = colorResource(R.color.brand_green), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                        Text(text = "${allPlans.size} 项", color = colorResource(R.color.brand_green), fontSize = 20.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                         Text(text = stringResource(R.string.home_done_desc), color = colorResource(R.color.text_secondary), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
@@ -517,7 +727,7 @@ fun HomeSheetContent(
             }
 
             Text(
-                text = stringResource(R.string.home_recent),
+                text = "📋 学习计划 (${allPlans.size})",
                 color = colorResource(R.color.text_primary),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
@@ -525,36 +735,64 @@ fun HomeSheetContent(
             )
         }
 
-        items(items) { item ->
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = colorResource(R.color.surface_white)),
-                border = BorderStroke(1.dp, colorResource(R.color.divider_soft))
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        if (allPlans.isEmpty()) {
+            item {
+                Text(
+                    "暂无计划，点击上方创建",
+                    color = colorResource(R.color.text_muted),
+                    fontSize = 14.sp
+                )
+            }
+        } else {
+            items(allPlans, key = { it.id }) { plan ->
+                val macaronColors = listOf(
+                    Color(0xFF6B9CE4), Color(0xFF5BC0A0), Color(0xFFF4A261),
+                    Color(0xFFB583E4), Color(0xFFE483B5)
+                )
+                val dotColor = macaronColors[plan.colorIndex % macaronColors.size]
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
+                        .clickable {
+                            val convId = plan.conversationId ?: if (plan.id > 0) plan.id else null
+                            val intent = android.content.Intent(context, PlanDetailActivity::class.java).apply {
+                                convId?.let { putExtra(PlanDetailActivity.EXTRA_CONVERSATION_ID, it) }
+                                plan.pathId?.let { putExtra(PlanDetailActivity.EXTRA_PATH_ID, it) }
+                                putExtra(PlanDetailActivity.EXTRA_PLAN_TITLE, plan.title)
+                            }
+                            context.startActivity(intent)
+                        },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = colorResource(R.color.surface_white)),
+                    border = BorderStroke(1.dp, colorResource(R.color.divider_soft))
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(colorResource(item.colorRes))
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(start = 12.dp)
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(text = item.title, color = colorResource(R.color.text_primary), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Text(text = item.category, color = colorResource(R.color.text_secondary), fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp).clip(CircleShape).background(dotColor)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            plan.title,
+                            color = colorResource(R.color.text_primary),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        if (!plan.latestDate.isNullOrBlank()) {
+                            Text(
+                                plan.latestDate,
+                                color = colorResource(R.color.text_secondary),
+                                fontSize = 12.sp
+                            )
+                        }
                     }
-
-                    Text(text = item.time, color = colorResource(R.color.text_secondary), fontSize = 11.sp)
                 }
             }
         }

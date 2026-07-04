@@ -49,11 +49,15 @@ import java.util.*
 /**
  * AI 对话式创建学习计划页面
  *
- * 参考 api.md 中的接口实现 AI 对话创建学习路径：
- * 1. POST   /api/v1/conversations          创建会话
- * 2. POST   /api/v1/messages/question       提交问题
- * 3. GET    /api/v1/tasks/{task_id}/result  轮询任务结果
- * 4. 从 meta_json.learning_path 解析学习路径
+ * 参考 api.txt、Tree.txt 和 service.md 中的接口实现 AI 对话创建学习路径：
+ * 1. POST   /api/v1/conversations              创建会话
+ * 2. POST   /api/v1/qa-nodes/question           提交问题（树节点）
+ * 3. GET    /api/v1/tasks/{task_id}/result      轮询任务结果
+ * 4. 从 meta_json 解析学习路径（支持 learning_path_v1 / decompose_v1）
+ *
+ * AI 返回的 decompose_v1 格式包含 sub_questions 数组，
+ * 每个元素含 title, node_type(lesson/practice/checkpoint/resource),
+ * description, est_minutes 等字段，自动作为 planned 子节点。
  */
 class CreatePlanActivity : ComponentActivity() {
 
@@ -104,6 +108,14 @@ fun CreatePlanScreen(
     var loadingMessage by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var currentConversationId by remember { mutableStateOf<Long?>(null) }
+
+    // ── 追问状态 ──
+    /** 当前选中的父节点 ID（null = 根问题） */
+    var selectedParentNodeId by remember { mutableStateOf<Long?>(null) }
+    /** 当前选中父节点的标题（用于输入栏提示） */
+    var selectedParentNodeTitle by remember { mutableStateOf<String?>(null) }
+    /** planned 子节点标题 → 真实节点 ID 映射 */
+    var plannedNodeMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
 
     // ── 检查登录 ──
     val isLoggedIn = remember { SessionManager.isLoggedIn() }
@@ -238,16 +250,23 @@ fun CreatePlanScreen(
                     )
                 }
 
-                // 提交问题
+                    // 提交问题（使用 qa-nodes API，支持树形结构）
                 loadingMessage = "AI 正在思考..."
-                val questionRequest = QuestionSubmitRequest(
-                    conversation_id = convId!!,
-                    content_text = query,
-                    request_id = "$requestId-q"
+                val parentId = selectedParentNodeId
+                val parentTitle = selectedParentNodeTitle
+                // 清除追问状态
+                selectedParentNodeId = null
+                selectedParentNodeTitle = null
+                val qaRequest = QaNodeQuestionRequest(
+                    conversationId = convId!!,
+                    contentText = query,
+                    parentNodeId = parentId,
+                    nodeTitle = if (query.length > 80) query.take(80) else query,
+                    requestId = "$requestId-q"
                 )
 
-                val questionResult = PlanApiService.submitQuestion(token, questionRequest)
-                val questionData = questionResult.getOrElse { error ->
+                val qaResult = PlanApiService.submitQaNodeQuestion(token, qaRequest)
+                val qaResponse = qaResult.getOrElse { error ->
                     messages = messages.filter { !it.isLoading }
                     val mockMsg = createMockResponse(query)
                     messages = messages + mockMsg
@@ -259,10 +278,14 @@ fun CreatePlanScreen(
                     isLoading = false
                     return@launch
                 }
+                val questionData = qaResponse.node ?: qaResponse.let {
+                    // 兼容直接返回 generation_task_id 的情况
+                    QaNodeData(generationTaskId = qaResponse.generationTaskId)
+                }
 
                 // 轮询任务结果
                 loadingMessage = "AI 正在生成学习路径..."
-                val taskId = questionData.generation_task_id
+                val taskId = questionData.generationTaskId ?: return@launch
                 var retryCount = 0
                 val maxRetries = 40
                 var responseReady = false
@@ -301,11 +324,34 @@ fun CreatePlanScreen(
                             role = "assistant",
                             content = contentText,
                             timestamp = System.currentTimeMillis(),
-                            learningPath = learningPath
+                            learningPath = learningPath,
+                            conversationId = convId
                         )
 
                         messages = messages.filter { !it.isLoading }
                         messages = messages + assistantMsg
+
+                        // ── 拉取 QA 树，获取 planned 子节点真实 ID（用于追问） ──
+                        try {
+                            val qaTreeResult = PlanApiService.getQaTree(token, convId!!)
+                            qaTreeResult.onSuccess { qaTree ->
+                                val roots = qaTree.nodes ?: emptyList()
+                                val allChildren = roots.flatMap { it.children ?: emptyList() }
+                                // 递归收集所有子孙 planned/done 节点
+                                fun collectAll(tns: List<QaTreeNode>, map: MutableMap<String, Long>) {
+                                    for (tn in tns) {
+                                        val title = tn.node?.title ?: ""
+                                        val id = tn.node?.id ?: continue
+                                        if (title.isNotBlank()) map[title] = id
+                                        tn.children?.let { collectAll(it, map) }
+                                    }
+                                }
+                                val map = mutableMapOf<String, Long>()
+                                collectAll(allChildren, map)
+                                plannedNodeMap = map
+                            }
+                        } catch (_: Exception) {}
+
                         isLoading = false
 
                         // 保存到本地存储
@@ -398,7 +444,12 @@ fun CreatePlanScreen(
                     ) { message ->
                         ChatMessageBubble(
                             message = message,
-                            onRetry = { /* 待实现 */ }
+                            onRetry = { /* 待实现 */ },
+                            plannedNodeMap = plannedNodeMap,
+                            onFollowUp = { nodeId, title ->
+                                selectedParentNodeId = nodeId
+                                selectedParentNodeTitle = title
+                            }
                         )
                     }
                 }
@@ -419,6 +470,40 @@ fun CreatePlanScreen(
                 message = errorMessage!!,
                 onDismiss = { errorMessage = null }
             )
+        }
+
+        // ── 追问目标提示 ──
+        if (selectedParentNodeId != null && selectedParentNodeTitle != null) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = colorResource(R.color.brand_primary_soft)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("💬 追问: ", fontSize = 12.sp, color = colorResource(R.color.brand_primary))
+                    Text(
+                        text = selectedParentNodeTitle!!,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = colorResource(R.color.text_primary),
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1
+                    )
+                    IconButton(
+                        onClick = {
+                            selectedParentNodeId = null
+                            selectedParentNodeTitle = null
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Text("✕", fontSize = 12.sp, color = colorResource(R.color.text_muted))
+                    }
+                }
+            }
         }
 
         // ── 底部输入区域（有学习路径后允许继续追问） ──
@@ -806,7 +891,9 @@ fun ErrorBanner(
 @Composable
 fun ChatMessageBubble(
     message: ChatMessage,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    plannedNodeMap: Map<String, Long> = emptyMap(),
+    onFollowUp: ((Long, String) -> Unit)? = null
 ) {
     val isUser = message.role == "user"
     val isAssistant = message.role == "assistant"
@@ -995,7 +1082,12 @@ fun ChatMessageBubble(
                     // ---- 如果包含学习路径，显示路径卡片 ----
                     message.learningPath?.let { lp ->
                         Spacer(modifier = Modifier.height(10.dp))
-                        LearningPathChatCard(plan = lp)
+                        LearningPathChatCard(
+                            plan = lp,
+                            conversationId = message.conversationId,
+                            plannedNodeMap = plannedNodeMap,
+                            onFollowUp = onFollowUp
+                        )
                     }
                 }
             }
@@ -1049,8 +1141,11 @@ private fun parseMarkdownText(text: String): List<TextSegment> {
 // ============================================================
 
 @Composable
-fun LearningPathChatCard(
-    plan: LearningPathMeta
+private fun LearningPathChatCard(
+    plan: LearningPathMeta,
+    conversationId: Long? = null,
+    plannedNodeMap: Map<String, Long> = emptyMap(),
+    onFollowUp: ((Long, String) -> Unit)? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1112,6 +1207,22 @@ fun LearningPathChatCard(
                     else -> "🔒"
                 }
 
+                // 节点类型徽章颜色
+                val nodeTypeLabel = when (node.nodeType) {
+                    "lesson" -> "📖 课程"
+                    "practice" -> "💻 练习"
+                    "checkpoint" -> "🎯 测验"
+                    "resource" -> "📎 资源"
+                    else -> ""
+                }
+                val nodeTypeColor = when (node.nodeType) {
+                    "lesson" -> Color(0xFF4A90D9)
+                    "practice" -> Color(0xFFE67E22)
+                    "checkpoint" -> Color(0xFF9B59B6)
+                    "resource" -> Color(0xFF27AE60)
+                    else -> Color.Gray
+                }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1150,6 +1261,36 @@ fun LearningPathChatCard(
                                 fontSize = 12.sp
                             )
                         }
+
+                        // 节点类型和时间信息
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 2.dp)
+                        ) {
+                            if (node.nodeType.isNotBlank()) {
+                                Text(
+                                    text = nodeTypeLabel,
+                                    color = nodeTypeColor,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            if (node.estMinutes > 0) {
+                                if (node.nodeType.isNotBlank()) {
+                                    Text(
+                                        text = " · ",
+                                        color = colorResource(R.color.text_muted),
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Text(
+                                    text = "约 ${node.estMinutes} 分钟",
+                                    color = colorResource(R.color.text_muted),
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
                         if (node.description.isNotBlank()) {
                             Text(
                                 text = node.description,
@@ -1159,6 +1300,20 @@ fun LearningPathChatCard(
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }
+
+                        // 追问按钮（仅 planned 节点）
+                        if (onFollowUp != null && plannedNodeMap.isNotEmpty()) {
+                            val nodeId = plannedNodeMap[node.title]
+                            if (nodeId != null) {
+                                TextButton(
+                                    onClick = { onFollowUp(nodeId, node.title) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.padding(top = 2.dp)
+                                ) {
+                                    Text("💬 追问", fontSize = 11.sp, color = colorResource(R.color.brand_primary))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1166,12 +1321,20 @@ fun LearningPathChatCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             // 操作按钮
+            val context = LocalContext.current
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 OutlinedButton(
-                    onClick = { /* 查看详情待实现 */ },
+                    onClick = {
+                        // 跳转到详情页
+                        val intent = android.content.Intent(context, PlanDetailActivity::class.java).apply {
+                            conversationId?.let { putExtra(PlanDetailActivity.EXTRA_CONVERSATION_ID, it) }
+                            putExtra(PlanDetailActivity.EXTRA_PLAN_TITLE, plan.title)
+                        }
+                        context.startActivity(intent)
+                    },
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(20.dp),
                     border = androidx.compose.foundation.BorderStroke(
@@ -1196,52 +1359,117 @@ fun LearningPathChatCard(
 
 /**
  * 从 AnswerMessageData 的 meta_json / content_text 中解析学习路径
+ *
+ * 支持两种格式（由 content_type 区分）：
+ * 1. learning_path_v1: meta_json.learning_path 包含完整学习路径
+ * 2. decompose_v1:     meta_json.sub_questions 包含子问题列表
  */
 private fun parseLearningPath(answerMsg: AnswerMessageData): LearningPathMeta? {
     return try {
-        // 优先从 meta_json 中解析
         val metaJson = answerMsg.meta_json
-        if (metaJson != null && metaJson.containsKey("learning_path")) {
-            @Suppress("UNCHECKED_CAST")
-            val lpMap = metaJson["learning_path"] as? Map<String, Any> ?: return null
-            val title = lpMap["title"] as? String ?: ""
-            val goal = lpMap["goal"] as? String ?: ""
-            val nodesRaw = lpMap["nodes"] as? List<Map<String, Any>> ?: emptyList()
-            val nodes = nodesRaw.mapIndexed { index, nodeMap ->
-                LearningPathNodeMeta(
-                    id = (nodeMap["id"] as? Number)?.toInt() ?: (index + 1),
-                    title = nodeMap["title"] as? String ?: "节点 ${index + 1}",
-                    description = nodeMap["description"] as? String ?: "",
-                    status = nodeMap["status"] as? String ?: "locked"
-                )
+        if (metaJson == null) return null
+
+        val gson = com.google.gson.Gson()
+
+        // 检测 content_type
+        val contentType = metaJson["content_type"] as? String ?: ""
+
+        when (contentType) {
+            "learning_path_v1" -> {
+                // 格式1：learning_path_v1 — 完整学习路径
+                parseLearningPathV1(metaJson)
             }
-            LearningPathMeta(title = title, goal = goal, nodes = nodes)
-        } else {
-            // 尝试从 content_text 中解析 JSON
-            val content = answerMsg.content_text
-            if (content.isNotBlank() && content.contains("learning_path")) {
-                val gson = com.google.gson.Gson()
-                val map = gson.fromJson(content, Map::class.java) as? Map<String, Any>
-                val lpMap = map?.get("learning_path") as? Map<String, Any> ?: return null
-                val title = lpMap["title"] as? String ?: ""
-                val goal = lpMap["goal"] as? String ?: ""
-                val nodesRaw = lpMap["nodes"] as? List<Map<String, Any>> ?: emptyList()
-                val nodes = nodesRaw.mapIndexed { index, nodeMap ->
-                    LearningPathNodeMeta(
-                        id = (nodeMap["id"] as? Number)?.toInt() ?: (index + 1),
-                        title = nodeMap["title"] as? String ?: "节点 ${index + 1}",
-                        description = nodeMap["description"] as? String ?: "",
-                        status = nodeMap["status"] as? String ?: "locked"
-                    )
+            "decompose_v1" -> {
+                // 格式2：decompose_v1 — 子问题分解（QA 树模式）
+                parseDecomposeV1(metaJson, gson)
+            }
+            else -> {
+                // 兼容旧格式：直接检查 learning_path 字段
+                if (metaJson.containsKey("learning_path")) {
+                    parseLearningPathV1(metaJson)
+                } else if (metaJson.containsKey("sub_questions")) {
+                    parseDecomposeV1(metaJson, gson)
+                } else {
+                    null
                 }
-                LearningPathMeta(title = title, goal = goal, nodes = nodes)
-            } else {
-                null
             }
         }
     } catch (e: Exception) {
         null
     }
+}
+
+/**
+ * 解析 learning_path_v1 格式
+ */
+private fun parseLearningPathV1(metaJson: Map<String, Any>): LearningPathMeta? {
+    @Suppress("UNCHECKED_CAST")
+    val lpMap = metaJson["learning_path"] as? Map<String, Any> ?: return null
+    val title = lpMap["title"] as? String ?: ""
+    val goal = lpMap["goal"] as? String ?: ""
+    val nodesRaw = lpMap["nodes"] as? List<Map<String, Any>> ?: emptyList()
+    val nodes = nodesRaw.mapIndexed { index, nodeMap ->
+        LearningPathNodeMeta(
+            id = (nodeMap["id"] as? Number)?.toInt() ?: (index + 1),
+            title = nodeMap["title"] as? String ?: "节点 ${index + 1}",
+            description = nodeMap["description"] as? String ?: "",
+            status = nodeMap["status"] as? String ?: "locked",
+            nodeType = nodeMap["node_type"] as? String ?: "",
+            estMinutes = (nodeMap["est_minutes"] as? Number)?.toInt() ?: 0
+        )
+    }
+    return LearningPathMeta(title = title, goal = goal, nodes = nodes)
+}
+
+/**
+ * 解析 decompose_v1 格式（将 sub_questions 转换为学习路径节点）
+ */
+private fun parseDecomposeV1(
+    metaJson: Map<String, Any>,
+    gson: com.google.gson.Gson
+): LearningPathMeta? {
+    @Suppress("UNCHECKED_CAST")
+    val subQuestionsRaw = metaJson["sub_questions"] as? List<Map<String, Any>> ?: return null
+    val summaryText = metaJson["summary_text"] as? String ?: ""
+    @Suppress("UNCHECKED_CAST")
+    val keyPoints = metaJson["key_points"] as? List<String> ?: emptyList()
+
+    val title = metaJson["title"] as? String ?: "学习路径"
+    val goal = metaJson["goal"] as? String ?: summaryText
+
+    // 处理 content_text 中可能包含的 JSON 格式
+    // 如果 content_text 是 JSON 字符串，从中提取 title
+    val resolvedTitle = title.ifBlank {
+        metaJson["learning_path"]?.let { lp ->
+            @Suppress("UNCHECKED_CAST")
+            (lp as? Map<String, Any>)?.get("title") as? String
+        } ?: "学习路径"
+    }
+
+    val nodes = subQuestionsRaw.mapIndexed { index, sq ->
+        val title = sq["title"] as? String ?: "节点 ${index + 1}"
+        val questionText = sq["question_text"] as? String ?: ""
+        val nodeType = sq["node_type"] as? String ?: "lesson"
+        val description = sq["description"] as? String ?: ""
+        val estMinutes = (sq["est_minutes"] as? Number)?.toInt() ?: 0
+
+        LearningPathNodeMeta(
+            id = index + 1,
+            title = title,
+            description = description.ifBlank { questionText },
+            status = "available",
+            nodeType = nodeType,
+            estMinutes = estMinutes
+        )
+    }
+
+    return LearningPathMeta(
+        title = resolvedTitle,
+        goal = goal.ifBlank { summaryText },
+        nodes = nodes,
+        summaryText = summaryText,
+        keyPoints = keyPoints
+    )
 }
 
 // ============================================================
