@@ -22,12 +22,22 @@ local.properties
 Thumbs.db
 
 # Android build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
 captures/
 .externalNativeBuild/
 .cxx/
 
 # Logs
 *.log
+*.hprof
+
+# Signing keys (sensitive, DO NOT commit)
+*.jks
+*.keystore
+keystore.properties
 
 service.md
 api.txt

@@ -112,23 +112,61 @@ fun HomeScreen() {
 
     var refreshTrigger by remember { mutableStateOf(0) }
 
-    // 加载所有学习计划
+    // 加载所有学习计划（本地 + API 合并）
     fun loadPlans() {
         if (!PlanLocalStorage.isInitialized()) {
             PlanLocalStorage.init(context.applicationContext as android.app.Application)
         }
         val plans = PlanLocalStorage.loadAllPlans()
         allPlans = plans
+        // 更新选中计划
         if (plans.isNotEmpty()) {
-            val latest = plans
-                .filter { !it.latestDate.isNullOrBlank() }
-                .maxByOrNull { it.latestDate ?: "" }
+            val latest = plans.filter { !it.latestDate.isNullOrBlank() }.maxByOrNull { it.latestDate ?: "" }
             if (selectedPlanId == null || plans.none { it.id == selectedPlanId }) {
                 selectedPlanId = (latest ?: plans.first()).id
             }
             latestPlan = latest ?: plans.first()
         } else {
             latestPlan = null
+        }
+
+        // 已登录则从 API 获取最新计划列表，合并到本地
+        if (SessionManager.isLoggedIn()) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val token = SessionManager.getAccessToken() ?: ""
+                    if (token.isNotEmpty()) {
+                        val result = PlanApiService.getConversations(token)
+                        result.onSuccess { conversations ->
+                            // 保存 API 返回的计划到本地
+                            conversations.forEachIndexed { index, conv ->
+                                val plan = PlanItem(
+                                    id = conv.id,
+                                    title = conv.title,
+                                    latestDate = conv.updated_at.take(10),
+                                    createdDate = conv.created_at.take(10),
+                                    colorIndex = index % 5,
+                                    conversationId = conv.id
+                                )
+                                PlanLocalStorage.savePlan(plan)
+                            }
+                            // 重新加载合并后的列表
+                            withContext(Dispatchers.Main) {
+                                val mergedPlans = PlanLocalStorage.loadAllPlans()
+                                allPlans = mergedPlans
+                                if (mergedPlans.isNotEmpty()) {
+                                    val latest = mergedPlans.filter { !it.latestDate.isNullOrBlank() }.maxByOrNull { it.latestDate ?: "" }
+                                    if (selectedPlanId == null || mergedPlans.none { it.id == selectedPlanId }) {
+                                        selectedPlanId = (latest ?: mergedPlans.first()).id
+                                    }
+                                    latestPlan = latest ?: mergedPlans.first()
+                                }
+                                refreshTrigger++
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
         }
     }
 

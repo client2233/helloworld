@@ -1,7 +1,6 @@
 package com.nku.helloworld.ui.plan.api
 
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.nku.helloworld.AppConfig
 import com.nku.helloworld.HelloworldApp
 import com.nku.helloworld.auth.model.ApiResponse
@@ -66,6 +65,10 @@ object PlanApiService {
      *
      * 响应 data 为会话数组，每个会话可作为一条学习计划卡片展示。
      * 前端可通过 conversation_id 进一步调用 current-learning-path 获取详情。
+     *
+     * 兼容两种 data 格式：
+     * 1. 直接数组: {code, message, data: [...]}
+     * 2. 分页对象: {code, message, data: {items: [...], total: ...}}
      */
     suspend fun getConversations(token: String): Result<List<ConversationItem>> {
         return withContext(Dispatchers.IO) {
@@ -85,15 +88,49 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<List<ConversationItem>>>() {}.type
-                val apiResponse: ApiResponse<List<ConversationItem>> =
-                    gson.fromJson(responseBody, type)
+                // ── 健壮解析：先解析为 JsonObject，兼容 data 为数组或对象 ──
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
+                if (code != 0) {
+                    return@withContext Result.failure(Exception(message))
                 }
 
-                Result.success(apiResponse.data ?: emptyList())
+                val dataElement = jsonObject.get("data")
+                if (dataElement == null || dataElement.isJsonNull) {
+                    return@withContext Result.success(emptyList())
+                }
+
+                val conversations: List<ConversationItem> = when {
+                    // data 是数组：逐元素解析，避免 TypeToken
+                    dataElement.isJsonArray -> {
+                        val list = mutableListOf<ConversationItem>()
+                        for (element in dataElement.asJsonArray) {
+                            list.add(gson.fromJson(element, ConversationItem::class.java))
+                        }
+                        list
+                    }
+                    // data 是对象：尝试提取 items / conversations / list 字段
+                    dataElement.isJsonObject -> {
+                        val dataObj = dataElement.asJsonObject
+                        val itemsElement = dataObj.get("items")
+                            ?: dataObj.get("conversations")
+                            ?: dataObj.get("list")
+                        if (itemsElement != null && itemsElement.isJsonArray) {
+                            val list = mutableListOf<ConversationItem>()
+                            for (element in itemsElement.asJsonArray) {
+                                list.add(gson.fromJson(element, ConversationItem::class.java))
+                            }
+                            list
+                        } else {
+                            emptyList()
+                        }
+                    }
+                    else -> emptyList()
+                }
+
+                Result.success(conversations)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -129,17 +166,15 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<LearningPath>>() {}.type
-                val apiResponse: ApiResponse<LearningPath> =
-                    gson.fromJson(responseBody, type)
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
-
-                Result.success(
-                    apiResponse.data ?: throw Exception("学习路径数据为空")
-                )
+                val dataElement = jsonObject.get("data")
+                    ?: return@withContext Result.failure(Exception("学习路径数据为空"))
+                val data: LearningPath = gson.fromJson(dataElement, LearningPath::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -174,17 +209,15 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<LearningPath>>() {}.type
-                val apiResponse: ApiResponse<LearningPath> =
-                    gson.fromJson(responseBody, type)
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
-
-                Result.success(
-                    apiResponse.data ?: throw Exception("学习路径详情为空")
-                )
+                val dataElement = jsonObject.get("data")
+                    ?: return@withContext Result.failure(Exception("学习路径详情为空"))
+                val data: LearningPath = gson.fromJson(dataElement, LearningPath::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -231,13 +264,10 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<Unit>>() {}.type
-                val apiResponse: ApiResponse<Unit> =
-                    gson.fromJson(responseBody, type)
-
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
                 Result.success(Unit)
             } catch (e: Exception) {
@@ -276,13 +306,10 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<Unit>>() {}.type
-                val apiResponse: ApiResponse<Unit> =
-                    gson.fromJson(responseBody, type)
-
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
                 Result.success(Unit)
             } catch (e: Exception) {
@@ -319,15 +346,18 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<LearningProgress>>() {}.type
-                val apiResponse: ApiResponse<LearningProgress> =
-                    gson.fromJson(responseBody, type)
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
+                val dataElement = jsonObject.get("data")
+                val data: LearningProgress = if (dataElement != null && !dataElement.isJsonNull) {
+                    gson.fromJson(dataElement, LearningProgress::class.java)
+                } else {
+                    LearningProgress()
                 }
-
-                Result.success(apiResponse.data ?: LearningProgress())
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -367,17 +397,15 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<ConversationItem>>() {}.type
-                val apiResponse: ApiResponse<ConversationItem> =
-                    gson.fromJson(responseBody, type)
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
-
-                Result.success(
-                    apiResponse.data ?: throw Exception("创建会话失败")
-                )
+                val dataElement = jsonObject.get("data")
+                    ?: return@withContext Result.failure(Exception("创建会话失败"))
+                val data: ConversationItem = gson.fromJson(dataElement, ConversationItem::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -420,17 +448,15 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<QuestionSubmitData>>() {}.type
-                val apiResponse: ApiResponse<QuestionSubmitData> =
-                    gson.fromJson(responseBody, type)
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
-
-                Result.success(
-                    apiResponse.data ?: throw Exception("提交问题返回数据为空")
-                )
+                val dataElement = jsonObject.get("data")
+                    ?: return@withContext Result.failure(Exception("提交问题返回数据为空"))
+                val data: QuestionSubmitData = gson.fromJson(dataElement, QuestionSubmitData::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -468,17 +494,15 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<TaskResultData>>() {}.type
-                val apiResponse: ApiResponse<TaskResultData> =
-                    gson.fromJson(responseBody, type)
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
-
-                Result.success(
-                    apiResponse.data ?: throw Exception("任务结果数据为空")
-                )
+                val dataElement = jsonObject.get("data")
+                    ?: return@withContext Result.failure(Exception("任务结果数据为空"))
+                val data: TaskResultData = gson.fromJson(dataElement, TaskResultData::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -519,17 +543,22 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<LearningPathDetailData>>() {}.type
-                val apiResponse: ApiResponse<LearningPathDetailData> =
-                    gson.fromJson(responseBody, type)
+                // ── 健壮解析 ──
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
+                if (code != 0) {
+                    return@withContext Result.failure(Exception(message))
                 }
 
-                Result.success(
-                    apiResponse.data ?: throw Exception("学习路径详情数据为空")
-                )
+                val dataElement = jsonObject.get("data")
+                if (dataElement == null || dataElement.isJsonNull) {
+                    return@withContext Result.failure(Exception("学习路径详情数据为空"))
+                }
+
+                val data: LearningPathDetailData = gson.fromJson(dataElement, LearningPathDetailData::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -564,17 +593,22 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<LearningPathDetailData>>() {}.type
-                val apiResponse: ApiResponse<LearningPathDetailData> =
-                    gson.fromJson(responseBody, type)
+                // ── 健壮解析 ──
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
+                if (code != 0) {
+                    return@withContext Result.failure(Exception(message))
                 }
 
-                Result.success(
-                    apiResponse.data ?: throw Exception("当前学习路径数据为空")
-                )
+                val dataElement = jsonObject.get("data")
+                if (dataElement == null || dataElement.isJsonNull) {
+                    return@withContext Result.failure(Exception("当前学习路径数据为空"))
+                }
+
+                val data: LearningPathDetailData = gson.fromJson(dataElement, LearningPathDetailData::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
@@ -619,15 +653,21 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<QaTreeData>>() {}.type
-                val apiResponse: ApiResponse<QaTreeData> =
-                    gson.fromJson(responseBody, type)
+                // ── 健壮解析：先解析为 JsonObject，兼容 data 格式 ──
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
+                if (code != 0) {
+                    return@withContext Result.failure(Exception(message))
                 }
 
-                val data = apiResponse.data ?: throw Exception("QA 树数据为空")
+                val dataElement = jsonObject.get("data")
+                if (dataElement == null || dataElement.isJsonNull) {
+                    return@withContext Result.failure(Exception("QA 树数据为空"))
+                }
+
+                val data: QaTreeData = gson.fromJson(dataElement, QaTreeData::class.java)
 
                 // ── Debug: 格式化打印树结构 ──
                 apiLog("QaTree", "========== 树形结构 ==========")
@@ -690,17 +730,15 @@ object PlanApiService {
                     )
                 }
 
-                val type = object : TypeToken<ApiResponse<QaNodeQuestionResponse>>() {}.type
-                val apiResponse: ApiResponse<QaNodeQuestionResponse> =
-                    gson.fromJson(responseBody, type)
+                val jsonObject = gson.fromJson(responseBody, com.google.gson.JsonObject::class.java)
+                val code = jsonObject.get("code")?.asInt ?: -1
+                val message = jsonObject.get("message")?.asString ?: ""
+                if (code != 0) return@withContext Result.failure(Exception(message))
 
-                if (apiResponse.code != 0) {
-                    return@withContext Result.failure(Exception(apiResponse.message))
-                }
-
-                Result.success(
-                    apiResponse.data ?: throw Exception("提交问题返回数据为空")
-                )
+                val dataElement = jsonObject.get("data")
+                    ?: return@withContext Result.failure(Exception("提交问题返回数据为空"))
+                val data: QaNodeQuestionResponse = gson.fromJson(dataElement, QaNodeQuestionResponse::class.java)
+                Result.success(data)
             } catch (e: Exception) {
                 Result.failure(e)
             }
